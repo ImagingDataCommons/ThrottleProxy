@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-PROJECT=YOUR_PROJECT_NAME_HERE
-PROXY_SERVICE_NAME=YOUR_PROXY_SERVICE_NAME_HERE
-PROXY_CONFIG_GCS_PATH=gs://YOUR_DEPLOY_BUCKET_NAME_HERE/config.txt
-PROXY_SA_KEY_GCS_PATH=gs://YOUR_DEPLOY_BUCKET_NAME_HERE/privatekey.json
+PROJECT=idc-dev
+PROXY_SERVICE_NAME=ghc-proxy
+PROXY_CONFIG_GCS_PATH=gs://idc-dev-proxy-deploy-files/config.txt
+PROXY_SA_KEY_GCS_PATH=gs://idc-dev-proxy-deploy-files/sa-key.json
+MY_VENV=${HOME}/PythonVEs/throttle-prox-ve
 

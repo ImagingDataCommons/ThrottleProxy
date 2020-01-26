@@ -1,0 +1,19 @@
+runtime: python37
+
+instance_class: B2
+manual_scaling:
+  instances: 1
+
+env_variables:
+  GOOGLE_APPLICATION_CREDENTIALS: ./privatekey.json
+  IDC_THROTTLE_PROXY_CONFIG: ./config.txt
+
+service: ghc-proxy
+
+handlers:
+- url: /.*
+  script: auto
+  secure: always
+
+network:
+  instance_tag: idc-ghc-proxy
