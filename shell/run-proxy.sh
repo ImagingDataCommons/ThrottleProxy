@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+
 source ./setEnvVars.sh
 
 export PYTHONPATH=${MY_VENV}/lib

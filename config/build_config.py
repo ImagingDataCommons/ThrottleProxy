@@ -15,6 +15,7 @@
 # Do not use environment variables. We use a secrets file and load our own dictionary:
 #
 
+
 import os
 
 def read_dict(my_file_name):
