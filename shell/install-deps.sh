@@ -12,7 +12,3 @@ cd ..
 mkdir -p lib
 python3 -m pip install -r requirements.txt -t ${MY_VENV}/lib
 deactivate
-
-
-
-
