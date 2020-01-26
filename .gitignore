@@ -1,0 +1,4 @@
+lib/
+config.txt
+*.env
+privatekey.json

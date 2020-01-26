@@ -1,0 +1,8 @@
+GOOGLE_HC_URL=https://server.to.proxy.com
+CHUNK_SIZE=Integer streaming chunk size (also increment of bytes counted) e.g. 16384
+DEGRADATION_LEVEL_ONE=Integer total bytes per IP for degraded level one
+DEGRADATION_LEVEL_ONE_PAUSE=Float seconds e.g. 0.05
+DEGRADATION_LEVEL_TWO=Integer total bytes per IP for degraded level two
+DEGRADATION_LEVEL_TWO_PAUSE=Float seconds e.g. 0.5
+MAX_PER_IP_PER_DAY=Integer total bytes per IP
+MAX_TOTAL_PER_DAY=Integer total bytes for all IPs
