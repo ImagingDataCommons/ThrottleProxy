@@ -20,12 +20,14 @@ import os
 
 def read_dict(my_file_name):
     if not my_file_name:
-        my_file_name = os.environ.get('IDC-THROTTLE-PROXY-CONFIG')
+        my_file_name = os.environ.get('IDC_THROTTLE_PROXY_CONFIG')
     if not my_file_name:
         my_file_name = 'config.txt'
     retval = {}
     with open(my_file_name, 'r') as f:
         for line in f:
+            if line.startswith('#'):
+                continue
             if '=' not in line:
                 continue
             split_line = line.split('=')
