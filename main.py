@@ -15,22 +15,25 @@ limitations under the License.
 """
 
 
-from flask import Flask, abort, Response, stream_with_context, request
+from flask import Flask, abort, Response, stream_with_context, request, g
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
 import time
 from google.auth import default as get_credentials
 from google.auth.transport.requests import AuthorizedSession
 from datetime import date
-
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("main.py")
+import redis
+import json
 
 #
 # Configuration
 #
 
+REDIS_HOST = settings['REDIS_HOST']
+REDIS_PORT = int(settings['REDIS_PORT'])
+
+DISABLE = (settings['DISABLE'].lower() == 'true')
 CHUNK_SIZE = int(settings['CHUNK_SIZE'])
 GOOGLE_HC_URL = settings['GOOGLE_HC_URL']
 DEGRADATION_LEVEL_ONE = int(settings['DEGRADATION_LEVEL_ONE'])
@@ -39,91 +42,171 @@ DEGRADATION_LEVEL_TWO = int(settings['DEGRADATION_LEVEL_TWO'])
 DEGRADATION_LEVEL_TWO_PAUSE = float(settings['DEGRADATION_LEVEL_TWO_PAUSE'])
 MAX_PER_IP_PER_DAY = int(settings['MAX_PER_IP_PER_DAY'])
 MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
+GLOBAL_IP_ADDRESS = "192.168.255.255"
+
+app = Flask(__name__)
 
 #
-# In-memory storage of usage per IP. If we want to make it more robust, use persistent storage instead:
+# We need to be able to extract the IP address of the actual caller, despite passing through the
+# load balancer. This helps us do that cleanly:
 #
 
-usage = {}
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
 
 #
-# We have a global cap across all IPs as well
+# Logging:
 #
 
-all_ip_bytes_today = 0
-date_for_byte_count = date.today()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main.py")
 
-def counting_wrapper(req, ip_addr, count_usage):
+#
+# Ok, this is the client we use for this server. Note that it is backed by a connection pool that is managed in
+# a way that does not require us to explicitly release the connection on teardown!
+#
 
-    global date_for_byte_count
-    global all_ip_bytes_today
+redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
+
+#
+# This function does everything we wish to do inside a redis transaction.
+# See: https://github.com/andymccurdy/redis-py/blob/master/README.rst#pipelines
+#
+
+def increment_ips(pipe):
+    curr_use_per_ip_str = pipe.get(g.proxy_ip_addr)
+    curr_use_global_str = pipe.get(GLOBAL_IP_ADDRESS)
+
+    curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
+    curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
+
+    if curr_use_per_ip is not None:
+        if curr_use_per_ip['day'] != g.proxy_date:
+            curr_use_per_ip['day'] = g.proxy_date
+            curr_use_per_ip['bytes'] = 0
+        curr_use_per_ip['bytes'] += g.proxy_byte_count
+    else:
+        curr_use_per_ip = {
+                           'day':  g.proxy_date,
+                           'bytes': g.proxy_byte_count
+                          }
+    if curr_use_global is not None:
+        if curr_use_global['day'] != g.proxy_date:
+            curr_use_global['day'] = g.proxy_date
+            curr_use_global['bytes'] = 0
+        curr_use_global['bytes'] += g.proxy_byte_count
+    else:
+        curr_use_global = {
+                           'day': g.proxy_date,
+                           'bytes': g.proxy_byte_count
+                          }
+
+    pipe.multi()
+    pipe.set(g.proxy_ip_addr, json.dumps(curr_use_per_ip))
+    pipe.set(GLOBAL_IP_ADDRESS, json.dumps(curr_use_global))
+    return curr_use_per_ip, curr_use_global
+
+#
+# We only want to do one redis transaction per request. So we store up the data on the size and
+# only update the db atomically when we are done:
+#
+
+@app.teardown_request
+def teardown(request):
+
+    if not hasattr(g, 'proxy_ip_addr'):
+        return
+    #logger.info("teardown_request start")
+    pre_millis = int(round(time.time() * 1000))
+    curr_use_per_ip, curr_use_global = \
+        redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
+    post_millis = int(round(time.time() * 1000))
+    logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
+                                                                     g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
+    logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
+    logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
+    #logger.info("teardown_request done")
+    return
+
+#
+# We can optionally impose a "delay" time as the user gets close to the limit by providing
+# values for these constants > 0. Note, however, that this will require Google to spin up other
+# instances through the load balancer to keep up with traffic, as this just sleeps this instance:
+#
+
+def calc_delay(byte_count):
+    if (DEGRADATION_LEVEL_TWO > 0) and (byte_count > DEGRADATION_LEVEL_TWO):
+        delay_time = DEGRADATION_LEVEL_TWO_PAUSE
+    elif (DEGRADATION_LEVEL_ONE > 0) and (byte_count > DEGRADATION_LEVEL_ONE):
+        delay_time = DEGRADATION_LEVEL_ONE_PAUSE
+    else:
+        delay_time = 0.0
+
+    return delay_time
+
+#
+# This is streaming content, so we count the bytes as they go out the door, based on our streaming chunk size. This
+# slightly overcounts, since we don't know how many bytes go out on the last call:
+#
+
+def counting_wrapper(req, delay_time):
 
     # This is too simple; current Python 3 uses "yield from". But we need to
     # do stuff on each call. So should implement full yield from semantics shown at
     # https://www.python.org/dev/peps/pep-0380/
 
-
     for v in req.iter_content(chunk_size=CHUNK_SIZE):
         yield v
-        curr_use_per_ip = count_usage[ip_addr] if ip_addr in count_usage else {}
-        today = date.today()
-        #
-        # We keep a count of bytes per day per IP. If the date has changed, we zero the bytes, reset
-        # the day, and start again.
-        #
-        last_usage = curr_use_per_ip['day'] if 'day' in curr_use_per_ip else today
-        byte_count = curr_use_per_ip['bytes'] if 'bytes' in curr_use_per_ip else 0
-        if date_for_byte_count != today:
-            date_for_byte_count = today
-            all_ip_bytes_today = 0
 
-        if last_usage != today:
-            last_usage = today
-            byte_count = 0
-
-        curr_use_per_ip['day'] = last_usage
-        new_byte_count = byte_count + CHUNK_SIZE
-        curr_use_per_ip['bytes'] = new_byte_count
-        count_usage[ip_addr] = curr_use_per_ip
-        all_ip_bytes_today += CHUNK_SIZE
-
-        #
-        # We will permit the current request to complete even if it goes over the threshold. Next call
-        # will fail, however.
-        #
-
-        if new_byte_count > DEGRADATION_LEVEL_TWO:
-            delay_time = DEGRADATION_LEVEL_TWO_PAUSE
-        elif new_byte_count > DEGRADATION_LEVEL_ONE:
-            delay_time = DEGRADATION_LEVEL_ONE_PAUSE
-        else:
-            delay_time = 0.0
-
+        g.proxy_byte_count += CHUNK_SIZE
         if delay_time > 0.0:
             time.sleep(delay_time)
 
-
 @app.route('/<path:url>')
 def root(url):
+
+    client_ip = request.remote_addr
+
+    if DISABLE:
+        logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
+        abort(404)
 
     credentials, project = get_credentials()
     scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
     auth_session = AuthorizedSession(scoped_credentials)
 
     logger.info("[STATUS] Received proxy request: {}".format(url))
-    logger.info("[STATUS] Received querystring: {}".format(request.query_string))
+    #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
-    client_ip = request.remote_addr
-    logger.info("Remote IP %s" % client_ip)
+    #logger.info("Remote IP %s" % client_ip)
+    #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
     #
-    # If IP is over the daily quota, we return a 429 Too Many Requests:
+    # If IP is over the daily per-IP quota, we return a 429 Too Many Requests. If we are over the global quota,
+    # same thing. We are happy to just read the data at this point, and will atomically increment the whole count
+    # when we are done:
     #
+
     byte_count = 0
     delay_time = 0.0
 
-    todays_date = date.today()
-    curr_use_per_ip = usage[client_ip] if client_ip in usage else None
+    todays_date = str(date.today())
+
+    #logger.info("Getting data for {}".format(client_ip))
+
+    # Get bytes for this IP and for global usage:
+
+    curr_use_per_ip_str = redis_client.get(client_ip)
+    curr_use_global_str = redis_client.get(GLOBAL_IP_ADDRESS)
+
+    curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
+    curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
+
+    logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+
+    # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
+    # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
+    # with a zero count (with sane settings):
+
     if curr_use_per_ip is not None:
         last_usage = curr_use_per_ip['day']
         byte_count = curr_use_per_ip['bytes']
@@ -131,27 +214,56 @@ def root(url):
             byte_count = 0
 
         if byte_count > MAX_PER_IP_PER_DAY:
-            logger.info("Current byte count for IP exceeds daily threshold".format(byte_count))
+            logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
             return Response(status=429)
 
-        elif byte_count > DEGRADATION_LEVEL_TWO:
-            delay_time = DEGRADATION_LEVEL_TWO_PAUSE
-        elif byte_count > DEGRADATION_LEVEL_ONE:
-            delay_time = DEGRADATION_LEVEL_ONE_PAUSE
+        delay_time = calc_delay(byte_count)
+        if delay_time > 0.0:
+            time.sleep(delay_time)
 
-    if (date_for_byte_count == todays_date) and (all_ip_bytes_today > MAX_TOTAL_PER_DAY):
-        logger.info("Current byte count ALL IPS exceeds daily threshold".format(all_ip_bytes_today))
-        return Response(status=429)
+    if curr_use_global is not None:
+        last_global_usage = curr_use_global['day']
+        last_global_byte_count = curr_use_global['bytes']
+        if last_global_usage != todays_date:
+            byte_count = 0
 
-    logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
+        # Delays are not supported for the global limit:
+        if last_global_byte_count > MAX_TOTAL_PER_DAY:
+            logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
+                                                                                                              last_global_byte_count,
+                                                                                                              todays_date))
+            return Response(status=429)
 
-    req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string) \
+    if delay_time > 0.0:
+        logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
+
+    req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
         if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
 
-    logger.info("Request URL: {}".format(req_url))
+    #logger.info("Request URL: {}".format(req_url))
 
-    req = auth_session.get(req_url, stream=True)
-    return Response(stream_with_context(counting_wrapper(req, client_ip, usage)), content_type=req.headers['content-type'])
+    #
+    # Will need this for the teardown. Don't bother to update the delay during this request.
+    #
+
+    g.proxy_ip_addr = client_ip
+    g.proxy_date = todays_date
+    g.proxy_byte_count = 0
+
+    #logger.info("Request headers: {}".format(str(request.headers)))
+    # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
+    req = auth_session.get(req_url, stream=True,
+                           headers={key: value for (key, value) in request.headers if key != 'Host'},
+                           cookies=request.cookies,
+                           allow_redirects=False)
+    # Tried to drop content-encoding from this list, as it is returned by Google, but then the browser complains
+    # that the download failed:
+    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+    headers = [(name, value) for (name, value) in req.raw.headers.items()
+               if name.lower() not in excluded_headers]
+
+    #logger.info("Response headers: {}".format(str(headers)))
+    return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
 
 if __name__ == '__main__':
     app.run()

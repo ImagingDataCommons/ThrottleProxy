@@ -1,3 +1,4 @@
 requests
 Flask
 google-auth
+redis
