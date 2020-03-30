@@ -27,6 +27,7 @@ PROX_SERVER = settings['PROX_SERVER']
 URL_META = settings['URL_META']
 URL_FRAME_1 = settings['URL_FRAME_1']
 URL_FRAME_2 = settings['URL_FRAME_2']
+URL_STUDIES_1 = settings['URL_STUDIES_1']
 
 def payload(content):
     msg = email.parser.BytesParser().parsebytes(content)
@@ -49,6 +50,7 @@ def main():
     url_1 = URL_META
     url_2 = URL_FRAME_1
     url_3 = URL_FRAME_2
+    url_4 = URL_STUDIES_1
 
     url_1_ghc = url_1.format(GOOG_SERVER)
     req = auth_session.get(url_1_ghc)
@@ -63,6 +65,11 @@ def main():
     req = auth_session.get(url_3_ghc)
     pl = payload(req.content)
     ghc_len_3, ghc_hash_3 = analyze(pl)
+
+    url_4_ghc = url_4.format(GOOG_SERVER)
+    req = auth_session.get(url_4_ghc)
+    pl = payload(req.content)
+    ghc_len_4, ghc_hash_4 = analyze(pl)
 
     url_1_prox = url_1.format(PROX_SERVER)
     req = requests.request("GET", url_1_prox)
@@ -83,6 +90,17 @@ def main():
     prox_len_3, prox_hash_3 = analyze(pl)
     assert(prox_hash_3 == ghc_hash_3)
     assert(prox_len_3 == ghc_len_3)
+
+    url_4_prox = url_4.format(PROX_SERVER)
+    print(url_4_prox)
+    req = requests.request("GET", url_4_prox)
+    pl = payload(req.content)
+    prox_len_4, prox_hash_4 = analyze(pl)
+    assert(prox_hash_4 == ghc_hash_4)
+    assert(prox_len_4 == ghc_len_4)
+
+
+
 
     print("All tests passed")
 

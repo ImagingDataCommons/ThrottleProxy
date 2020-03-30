@@ -115,13 +115,16 @@ def teardown(request):
 
     if not hasattr(g, 'proxy_ip_addr'):
         return
-    logger.info("teardown_request start")
+    #logger.info("teardown_request start")
+    pre_millis = int(round(time.time() * 1000))
     curr_use_per_ip, curr_use_global = \
         redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
+    post_millis = int(round(time.time() * 1000))
     logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
                                                                      g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
     logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
-    logger.info("teardown_request done")
+    logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
+    #logger.info("teardown_request done")
     return
 
 #
@@ -172,10 +175,10 @@ def root(url):
     auth_session = AuthorizedSession(scoped_credentials)
 
     logger.info("[STATUS] Received proxy request: {}".format(url))
-    logger.info("[STATUS] Received querystring: {}".format(request.query_string))
+    #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
-    logger.info("Remote IP %s" % client_ip)
-    logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
+    #logger.info("Remote IP %s" % client_ip)
+    #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
     #
     # If IP is over the daily per-IP quota, we return a 429 Too Many Requests. If we are over the global quota,
@@ -188,7 +191,7 @@ def root(url):
 
     todays_date = str(date.today())
 
-    logger.info("Getting data for {}".format(client_ip))
+    #logger.info("Getting data for {}".format(client_ip))
 
     # Get bytes for this IP and for global usage:
 
@@ -234,10 +237,10 @@ def root(url):
     if delay_time > 0.0:
         logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
 
-    req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string) \
+    req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
         if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
 
-    logger.info("Request URL: {}".format(req_url))
+    #logger.info("Request URL: {}".format(req_url))
 
     #
     # Will need this for the teardown. Don't bother to update the delay during this request.
@@ -247,7 +250,7 @@ def root(url):
     g.proxy_date = todays_date
     g.proxy_byte_count = 0
 
-    logger.info("Request headers: {}".format(str(request.headers)))
+    #logger.info("Request headers: {}".format(str(request.headers)))
     # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
     req = auth_session.get(req_url, stream=True,
                            headers={key: value for (key, value) in request.headers if key != 'Host'},
@@ -259,7 +262,7 @@ def root(url):
     headers = [(name, value) for (name, value) in req.raw.headers.items()
                if name.lower() not in excluded_headers]
 
-    logger.info("Response headers: {}".format(str(headers)))
+    #logger.info("Response headers: {}".format(str(headers)))
     return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
 
 if __name__ == '__main__':
