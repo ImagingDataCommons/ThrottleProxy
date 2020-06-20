@@ -6,7 +6,7 @@ env_variables:
   GOOGLE_APPLICATION_CREDENTIALS: ./privatekey.json
   IDC_THROTTLE_PROXY_CONFIG: ./config.txt
 
-service: default
+service: proxy
 
 handlers:
 - url: /.*
@@ -14,7 +14,7 @@ handlers:
   secure: always
 
 vpc_access_connector:
-  name: 'projects/idc-sandbox-002/locations/us-central1/connectors/redis-connector'
+  name: 'projects/<project>/locations/<location>/connectors/redis-connector'
 
 network:
   instance_tag: idc-default

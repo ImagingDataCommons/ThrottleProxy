@@ -22,7 +22,7 @@ import logging
 import time
 from google.auth import default as get_credentials
 from google.auth.transport.requests import AuthorizedSession
-from datetime import date
+import datetime
 import redis
 import json
 
@@ -154,6 +154,11 @@ def counting_wrapper(req, delay_time):
     # do stuff on each call. So should implement full yield from semantics shown at
     # https://www.python.org/dev/peps/pep-0380/
 
+
+    # NO! Use Response.raw, not iter_content. The latter will decompress the result
+    # coming back from Google!
+    # (see https://requests.readthedocs.io/en/master/user/quickstart/#raw-response-content
+    # and https://requests.readthedocs.io/en/master/community/faq/#encoded-data)
     for v in req.iter_content(chunk_size=CHUNK_SIZE):
         yield v
 
@@ -161,7 +166,7 @@ def counting_wrapper(req, delay_time):
         if delay_time > 0.0:
             time.sleep(delay_time)
 
-@app.route('/<path:url>')
+@app.route('/<path:url>', methods=["GET", "OPTIONS"])
 def root(url):
 
     client_ip = request.remote_addr
@@ -189,7 +194,9 @@ def root(url):
     byte_count = 0
     delay_time = 0.0
 
-    todays_date = str(date.today())
+    now_time = datetime.date.today()
+    todays_date = str(now_time)
+    logger.info("Time is now {}".format(now_time.ctime()))
 
     #logger.info("Getting data for {}".format(client_ip))
 
@@ -242,6 +249,24 @@ def root(url):
 
     #logger.info("Request URL: {}".format(req_url))
 
+    logger.info("REQUEST METHOD {}".format(request.method))
+    logger.info("Request headers: {}".format(str(request.headers)))
+
+    cors_headers = None
+    if 'origin' in request.headers:
+        cors_headers = {
+            "Access-Control-Allow-Origin": request.headers['origin'],
+            "Access-Control-Allow-Methods": "GET"
+        }
+        if 'access-control-request-headers' in request.headers:
+            cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
+
+    if request.method == "OPTIONS":
+        resp = Response('')
+        resp.headers = cors_headers
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        return resp
+
     #
     # Will need this for the teardown. Don't bother to update the delay during this request.
     #
@@ -250,20 +275,27 @@ def root(url):
     g.proxy_date = todays_date
     g.proxy_byte_count = 0
 
+
     #logger.info("Request headers: {}".format(str(request.headers)))
     # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
-    req = auth_session.get(req_url, stream=True,
+    req = auth_session.request(request.method, req_url, stream=True,
                            headers={key: value for (key, value) in request.headers if key != 'Host'},
                            cookies=request.cookies,
                            allow_redirects=False)
     # Tried to drop content-encoding from this list, as it is returned by Google, but then the browser complains
     # that the download failed:
-    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
+                        'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
     headers = [(name, value) for (name, value) in req.raw.headers.items()
                if name.lower() not in excluded_headers]
+    if cors_headers:
+        for item in cors_headers.items():
+            headers.append(item)
 
     #logger.info("Response headers: {}".format(str(headers)))
     return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
+
+root.provide_automatic_options = False
 
 if __name__ == '__main__':
     app.run()
