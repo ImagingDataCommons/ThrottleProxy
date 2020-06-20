@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+#
+# Desktop dependency installer
+#
 
 source ./setEnvVars.sh
 

@@ -64,7 +64,7 @@ commands:
           name: "Set tier-specific configuration file"
           command: |
             sudo -E /bin/bash ./shell/pull_config.sh
-            xargs -a cron_deployment_config.txt -I{} echo "export {}" >> $BASH_ENV
+            xargs -a proxy_deployment_config.txt -I{} echo "export {}" >> $BASH_ENV
 
   auth:
     steps:
@@ -94,7 +94,7 @@ jobs:
   build_job:
     environment:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
-    working_directory: ~/IDC-Cron
+    working_directory: ~/ThrottleProxy
     docker:
       - image: circleci/python:3.7.0-stretch
     steps:
@@ -115,7 +115,7 @@ jobs:
           command: |
             sudo -E /bin/bash ./shell/gcloud-pull-staging-files.sh
       - save_cache:
-          key: idc-cron-{{ epoch }}
+          key: idc-proxy-{{ epoch }}
           paths:
           - ./shell
           - ./config
@@ -134,7 +134,7 @@ jobs:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     docker:
       - image: circleci/python:3.7.0-stretch
-    working_directory: ~/IDC-Cron
+    working_directory: ~/ThrottleProxy
     steps:
       - restore_cache:
           keys:
@@ -148,6 +148,18 @@ jobs:
             sudo -E /bin/bash ./shell/unpack_for_deployment.sh
             sudo -E gcloud app deploy --verbosity=debug ./app.yaml ./cron.yaml --quiet
             sudo -E /bin/sh ./shell/post-deployment.sh
+
+            #
+# Google docs say that if you want App Engine Standard to talk to redis, you are
+# using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
+# MUST use the gclould beta:
+#
+gcloud beta app deploy --verbosity=debug ./app.yaml --quiet --project=${PROJECT}
+
+
+
+
+
 workflows:
   version: 2
   build_and_deploy:

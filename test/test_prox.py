@@ -100,6 +100,271 @@ def main():
     assert(prox_len_4 == ghc_len_4)
 
 
+'''
+        "request": {
+          "bodySize": 0,
+          "method": "OPTIONS",
+          "url": "https://healthcare.googleapis.com/v1beta1/projects/chc-tcia/locations/us-central1/datasets/tcga-brca/dicomStores/tcga-brca/dicomWeb/studies/1.3.6.1.4.1.14519.5.2.1.9203.4002.240753407080370737439271619596/series/1.3.6.1.4.1.14519.5.2.1.9203.4002.113170262927555385612922478544/instances/1.3.6.1.4.1.14519.5.2.1.9203.4002.502593709247672019902402884413/frames/1",
+          "httpVersion": "HTTP/2",
+          "headers": [
+            {
+              "name": "Host",
+              "value": "healthcare.googleapis.com"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:74.0) Gecko/20100101 Firefox/74.0"
+            },
+            {
+              "name": "Accept",
+              "value": "*/*"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.5"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br"
+            },
+            {
+              "name": "Access-Control-Request-Method",
+              "value": "GET"
+            },
+            {
+              "name": "Access-Control-Request-Headers",
+              "value": "accept,authorization"
+            },
+            {
+              "name": "Referer",
+              "value": "https://idc-dev.appspot.com/projects/chc-tcia/locations/us-central1/datasets/tcga-brca/dicomStores/tcga-brca/study/1.3.6.1.4.1.14519.5.2.1.9203.4002.240753407080370737439271619596"
+            },
+            {
+              "name": "Origin",
+              "value": "https://idc-dev.appspot.com"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "TE",
+              "value": "Trailers"
+            }
+          ],
+          "cookies": [],
+          "queryString": [],
+          "headersSize": 900
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "HTTP/2",
+          "headers": [
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://idc-dev.appspot.com"
+            },
+            {
+              "name": "vary",
+              "value": "origin"
+            },
+            {
+              "name": "vary",
+              "value": "referer"
+            },
+            {
+              "name": "vary",
+              "value": "x-origin"
+            },
+            {
+              "name": "access-control-allow-methods",
+              "value": "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT"
+            },
+            {
+              "name": "access-control-allow-headers",
+              "value": "accept,authorization"
+            },
+            {
+              "name": "access-control-max-age",
+              "value": "3600"
+            },
+            {
+              "name": "date",
+              "value": "Tue, 31 Mar 2020 01:07:47 GMT"
+            },
+            {
+              "name": "content-type",
+              "value": "text/html"
+            },
+            {
+              "name": "server",
+              "value": "ESF"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "x-xss-protection",
+              "value": "0"
+            },
+            {
+              "name": "x-frame-options",
+              "value": "SAMEORIGIN"
+            },
+            {
+              "name": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "name": "alt-svc",
+              "value": "quic=\":443\"; ma=2592000; v=\"46,43\",h3-Q050=\":443\"; ma=2592000,h3-Q049=\":443\"; ma=2592000,h3-Q048=\":443\"; ma=2592000,h3-Q046=\":443\"; ma=2592000,h3-Q043=\":443\"; ma=2592000,h3-T050=\":443\"; ma=2592000"
+            },
+            {
+              "name": "X-Firefox-Spdy",
+              "value": "h2"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "mimeType": "text/html",
+            "size": 0,
+            "text": ""
+          },
+          "redirectURL": "",
+          "headersSize": 664,
+          "bodySize": 664
+        },
+
+
+
+'''
+
+'''
+        "request": {
+          "bodySize": 0,
+          "method": "GET",
+          "url": "https://healthcare.googleapis.com/v1beta1/projects/chc-tcia/locations/us-central1/datasets/tcga-brca/dicomStores/tcga-brca/dicomWeb/studies/1.3.6.1.4.1.14519.5.2.1.9203.4002.240753407080370737439271619596/series/1.3.6.1.4.1.14519.5.2.1.9203.4002.113170262927555385612922478544/instances/1.3.6.1.4.1.14519.5.2.1.9203.4002.103706408612581767733673809486/frames/1",
+          "httpVersion": "HTTP/2",
+          "headers": [
+            {
+              "name": "Host",
+              "value": "healthcare.googleapis.com"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:74.0) Gecko/20100101 Firefox/74.0"
+            },
+            {
+              "name": "Accept",
+              "value": "multipart/related; type=\"application/octet-stream\""
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.5"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ya29.a0Ae4lvC32HOpzzV6ZBRoUc3R7R2OhZVJh9vT7lNVlHjtQxiVodQ8QsREvGV440GW3rpFnoW4t7LYifXTGnP62j-DfMxTAuYvxiosAny7TPcjJZaKMumVitoNfFlX1Zb-kXGK8g1DVc7tLVgiV2Ys8Vb9OnBpdXJQboCilQw"
+            },
+            {
+              "name": "Origin",
+              "value": "https://idc-dev.appspot.com"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "Referer",
+              "value": "https://idc-dev.appspot.com/projects/chc-tcia/locations/us-central1/datasets/tcga-brca/dicomStores/tcga-brca/study/1.3.6.1.4.1.14519.5.2.1.9203.4002.240753407080370737439271619596"
+            },
+            {
+              "name": "TE",
+              "value": "Trailers"
+            }
+          ],
+          "cookies": [],
+          "queryString": [],
+          "headersSize": 1050
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "HTTP/2",
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "multipart/related; boundary=45313be6bc4971b04de7f03701085b9d9534ee7b5ffe86ba48c12018cff4; transfer-syntax=1.2.840.10008.1.2.1; type=\"application/octet-stream\""
+            },
+            {
+              "name": "vary",
+              "value": "Origin"
+            },
+            {
+              "name": "vary",
+              "value": "X-Origin"
+            },
+            {
+              "name": "vary",
+              "value": "Referer"
+            },
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "date",
+              "value": "Tue, 31 Mar 2020 01:07:47 GMT"
+            },
+            {
+              "name": "server",
+              "value": "ESF"
+            },
+            {
+              "name": "cache-control",
+              "value": "private"
+            },
+            {
+              "name": "x-xss-protection",
+              "value": "0"
+            },
+            {
+              "name": "x-frame-options",
+              "value": "SAMEORIGIN"
+            },
+            {
+              "name": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://idc-dev.appspot.com"
+            },
+            {
+              "name": "access-control-expose-headers",
+              "value": "content-encoding,transfer-encoding,date,server"
+            },
+            {
+              "name": "alt-svc",
+              "value": "quic=\":443\"; ma=2592000; v=\"46,43\",h3-Q050=\":443\"; ma=2592000,h3-Q049=\":443\"; ma=2592000,h3-Q048=\":443\"; ma=2592000,h3-Q046=\":443\"; ma=2592000,h3-Q043=\":443\"; ma=2592000,h3-T050=\":443\"; ma=2592000"
+            },
+            {
+              "name": "X-Firefox-Spdy",
+              "value": "h2"
+            }
+          ],
+          "cookies": [],
+
+'''
+
+
+
 
 
     print("All tests passed")
