@@ -1,0 +1,168 @@
+version: 2.1
+commands:
+  deployment_setup:
+    steps:
+      - run:
+          name: "Set the Tier"
+          command: |
+            TIER=DEV
+            if [[ ${CIRCLE_BRANCH} =~ idc-proxy-(prod|uat|test).* ]]; then
+              TIER=$(awk -F- '{print toupper($3)}' \<<< ${CIRCLE_BRANCH})
+            fi
+            echo "export TIER=${TIER}" >> $BASH_ENV
+            echo "Tier was identified as ${TIER} for branch ${CIRCLE_BRANCH}"
+      - run:
+          name: "Assign Project-level vars"
+          command: |
+            if [ ! -f deployment.key.json ]; then
+              echo "Deployment JSON keyfile not found - loading from CircleCI."
+              KEY=${DEPLOYMENT_KEY_IDC_DEV}
+            else
+              echo "Deployment JSON keyfile found."
+              KEY="NA"
+            fi
+            CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_DEV}
+            PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_DEV}
+            BUCKET=${DEPLOYMENT_BUCKET_IDC_DEV}
+            if [[ ${TIER} == "PROD" ]]; then
+              KEY=${DEPLOYMENT_KEY_IDC_PROD}
+              CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_PROD}
+              PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_PROD}
+              BUCKET=${DEPLOYMENT_BUCKET_IDC_PROD}
+              echo "Using production project and related deployment SA and bucket."
+            elif [[ ${TIER} == "UAT" ]]; then
+              KEY=${DEPLOYMENT_KEY_IDC_UAT}
+              CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_UAT}
+              PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_UAT}
+              BUCKET=${DEPLOYMENT_BUCKET_IDC_UAT}
+              echo "Using UAT project and related deployment SA and bucket."
+            elif [[ ${TIER} == "TEST" ]]; then
+              KEY=${DEPLOYMENT_KEY_IDC_TEST}
+              CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_TEST}
+              PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_TEST}
+              BUCKET=${DEPLOYMENT_BUCKET_IDC_TEST}
+              echo "Using test project and related deployment SA and bucket."
+            elif [[ ${TIER} == "DEV" ]]; then
+              echo "Using development/default project and related deployment SA and bucket."
+            else
+              echo "[ERROR] - Unrecognized tier: ${TIER} - exiting."
+              exit 1
+            fi
+            echo "export DEPLOYMENT_KEY=\"${KEY}\"" >> $BASH_ENV
+            echo "export DEPLOYMENT_CLIENT_EMAIL=${CLIENT_EMAIL}" >> $BASH_ENV
+            echo "export DEPLOYMENT_PROJECT_ID=${PROJECT_ID}" >> $BASH_ENV
+            echo "export DEPLOYMENT_BUCKET=${BUCKET}" >> $BASH_ENV
+
+            echo "Project settings assigned:"
+            echo "Deployment client: ${CLIENT_EMAIL}"
+            echo "Deployment project: ${PROJECT_ID}"
+            echo "Deployment bucket: gs://${BUCKET}"
+
+  deployment_config:
+    steps:
+      - run:
+          name: "Set tier-specific configuration file"
+          command: |
+            sudo -E /bin/bash ./shell/pull_config.sh
+            xargs -a proxy_deployment_config.txt -I{} echo "export {}" >> $BASH_ENV
+
+  auth:
+    steps:
+      - run:
+          name: "Service Account Auth and Project Settings"
+          command: |
+            sudo -E /bin/bash ./shell/gcloud_authenticate.sh
+
+  install_cloud_sdk:
+    steps:
+      - run:
+          name: "Install CloudSDK"
+          command: |
+            echo "export CLOUDSDK_CORE_DISABLE_PROMPTS=1" >> $BASH_ENV
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+            sudo apt-get update && sudo apt-get -y --allow-downgrades install google-cloud-sdk=251.0.0-0
+
+  run_tests:
+    steps:
+      - run:
+          name: "Run Tests"
+          command: |
+            sudo -E /bin/bash ./shell/run_tests.sh
+
+jobs:
+  build_job:
+    environment:
+      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+    working_directory: ~/ThrottleProxy
+    docker:
+      - image: circleci/python:3.7.0-stretch
+    steps:
+      - checkout
+      - run:
+          name: Set Python Path
+          command: |
+            echo "export PYTHONPATH=/home/circleci/${CIRCLE_PROJECT_REPONAME}:/home/circleci/${CIRCLE_PROJECT_REPONAME}/lib" >> $BASH_ENV
+      - run:
+          name: Install Dependencies
+          command: |
+            sudo -E /bin/bash ./shell/install-deps.sh
+      - deployment_setup
+      - auth
+      - deployment_config
+      - run:
+          name: Staging and Database testing
+          command: |
+            sudo -E /bin/bash ./shell/gcloud-pull-staging-files.sh
+      - save_cache:
+          key: idc-proxy-{{ epoch }}
+          paths:
+          - ./shell
+          - ./config
+          - ./tasks
+          - ./google_helpers
+          - ./scripts
+          - ./main.py
+          - ./cron.yaml
+          - ./app.yaml
+          - ./txt
+          - ./json
+          - ./.env
+
+  deploy_job:
+    environment:
+      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+    docker:
+      - image: circleci/python:3.7.0-stretch
+    working_directory: ~/ThrottleProxy
+    steps:
+      - restore_cache:
+          keys:
+            - idc-cron-
+      - install_cloud_sdk
+      - deployment_setup
+      - auth
+      - deployment_config
+      - deploy:
+          command: |
+            sudo -E /bin/bash ./shell/unpack_for_deployment.sh
+            # Google docs say that if you want App Engine Standard to talk to redis, you are
+            # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
+            # MUST use the gclould beta:
+            sudo -E gcloud beta app deploy --verbosity=debug ./app.yaml ./cron.yaml --quiet
+            sudo -E /bin/sh ./shell/post-deployment.sh
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build_job
+      - deploy_job:
+          requires:
+            - build_job
+          filters:
+            branches:
+              only:
+                - master
+                - idc-proxy-prod
+                - idc-proxy-test

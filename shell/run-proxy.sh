@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+#
+# For desktop operations
+#
 
 source ./setEnvVars.sh
 

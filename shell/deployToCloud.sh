@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+#
+# Script for deployment from the desktop
 
 trap 'rm ./privatekey.json; mv hold_config.txt config.txt' EXIT
 
