@@ -166,6 +166,13 @@ def counting_wrapper(req, delay_time):
         if delay_time > 0.0:
             time.sleep(delay_time)
 
+
+@app.route('/_ah/warmup')
+def warmup():
+    # We are configured with warmup requests. If we need to do something, this is the place.
+    return '', 200, {}
+
+
 @app.route('/<path:url>', methods=["GET", "OPTIONS"])
 def root(url):
 
