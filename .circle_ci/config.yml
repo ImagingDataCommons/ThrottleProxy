@@ -146,19 +146,11 @@ jobs:
       - deploy:
           command: |
             sudo -E /bin/bash ./shell/unpack_for_deployment.sh
-            sudo -E gcloud app deploy --verbosity=debug ./app.yaml ./cron.yaml --quiet
+            # Google docs say that if you want App Engine Standard to talk to redis, you are
+            # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
+            # MUST use the gclould beta:
+            sudo -E gcloud beta app deploy --verbosity=debug ./app.yaml ./cron.yaml --quiet
             sudo -E /bin/sh ./shell/post-deployment.sh
-
-            #
-# Google docs say that if you want App Engine Standard to talk to redis, you are
-# using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
-# MUST use the gclould beta:
-#
-gcloud beta app deploy --verbosity=debug ./app.yaml --quiet --project=${PROJECT}
-
-
-
-
 
 workflows:
   version: 2
