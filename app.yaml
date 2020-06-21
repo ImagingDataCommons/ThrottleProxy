@@ -16,7 +16,7 @@ handlers:
     script: auto
     secure: always
   - url: .*
-      script: auto
+    script: auto
 
 automatic_scaling:
   min_idle_instances: automatic
