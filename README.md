@@ -6,7 +6,7 @@ enforces a global daily byte limit for the whole server. Prior to hitting the da
 begins to degrade performance by inserting sleep requests between each chunk of relayed bytes. This
 degredation occurs in two steps. Once the daily limit is reached, the proxy returns HTTP status 429.
 
-You need to deploy a *REDIS* server.
+You need to deploy a REDIS server.
 
 Using a redis server:
 
