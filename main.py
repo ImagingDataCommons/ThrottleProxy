@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 
-from flask import Flask, abort, Response, stream_with_context, request, g
+from flask import Flask, abort, Response, stream_with_context, request, g, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
@@ -36,6 +36,7 @@ REDIS_PORT = int(settings['REDIS_PORT'])
 DISABLE = (settings['DISABLE'].lower() == 'true')
 CHUNK_SIZE = int(settings['CHUNK_SIZE'])
 GOOGLE_HC_URL = settings['GOOGLE_HC_URL']
+SUPPORTED_PROJECT = settings['SUPPORTED_PROJECT']
 DEGRADATION_LEVEL_ONE = int(settings['DEGRADATION_LEVEL_ONE'])
 DEGRADATION_LEVEL_ONE_PAUSE = float(settings['DEGRADATION_LEVEL_ONE_PAUSE'])
 DEGRADATION_LEVEL_TWO = int(settings['DEGRADATION_LEVEL_TWO'])
@@ -172,9 +173,12 @@ def warmup():
     # We are configured with warmup requests. If we need to do something, this is the place.
     return '', 200, {}
 
+#
+# Let callers know where they stand, out of band:
+#
 
-@app.route('/<path:url>', methods=["GET", "OPTIONS"])
-def root(url):
+@app.route('/quota_usage', methods=["GET", "OPTIONS"])
+def quota_usage():
 
     client_ip = request.remote_addr
 
@@ -182,7 +186,93 @@ def root(url):
         logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
         abort(404)
 
-    credentials, project = get_credentials()
+    now_time = datetime.date.today()
+    todays_date = str(now_time)
+
+    # Get bytes for this IP and for global usage:
+
+    curr_use_per_ip_str = redis_client.get(client_ip)
+    curr_use_global_str = redis_client.get(GLOBAL_IP_ADDRESS)
+
+    curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
+    curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
+
+    logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+
+    #
+    # Always provide the cors headers to keep OHIF happy:
+    #
+
+    cors_headers = None
+    if 'origin' in request.headers:
+        cors_headers = {
+            "Access-Control-Allow-Origin": request.headers['origin'],
+            "Access-Control-Allow-Methods": "GET"
+        }
+        if 'access-control-request-headers' in request.headers:
+            cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
+
+        logger.info("REQUEST METHOD {}".format(request.method))
+        logger.info("Request headers: {}".format(str(request.headers)))
+
+    if request.method == "OPTIONS":
+        resp = Response('')
+        resp.headers = cors_headers
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        return resp
+
+    # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
+    # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
+    # with a zero count (with sane settings):
+
+    usage_return = {
+        "ip": client_ip,
+        "bytes_used": 0,
+        "fraction_used": 0.0,
+        "global_fraction_used": 0.0,
+        "date": todays_date
+    }
+
+    if curr_use_per_ip is not None:
+        last_usage = curr_use_per_ip['day']
+        byte_count = curr_use_per_ip['bytes']
+        if last_usage != todays_date:
+            byte_count = 0
+
+        usage_return["bytes_used"] = byte_count
+        usage_return["fraction_used"] = float(byte_count)/float(MAX_PER_IP_PER_DAY)
+
+    if curr_use_global is not None:
+        last_global_usage = curr_use_global['day']
+        last_global_byte_count = curr_use_global['bytes']
+        if last_global_usage != todays_date:
+            last_global_byte_count = 0
+
+        usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
+
+    return jsonify(usage_return)
+
+#
+# Needs to match on e.g. this:
+# https://idc-sandbox-002.appspot.com/v1beta1/projects/chc-tcia/locations/us-central1/datasets/tcga-gbm/dicomStores/tcga-gbm/dicomWeb/studies/1.3.6.1.4.1.14519.5.2.1.4591.4001.292494376567537333391334418593/series
+#
+
+@app.route('/<version>/projects/<project>/locations/<location>/datasets/<path:remainder>', methods=["GET", "OPTIONS"])
+def root(version, project, location, remainder):
+
+    client_ip = request.remote_addr
+
+    if DISABLE:
+        logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
+        abort(404)
+
+    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
+
+    if project != SUPPORTED_PROJECT:
+        logger.info("request from {} has been dropped: unsupported project {}".format(client_ip, project))
+        abort(404)
+
+    credentials, gcp_project = get_credentials()
     scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
     auth_session = AuthorizedSession(scoped_credentials)
 
@@ -217,6 +307,29 @@ def root(url):
 
     logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
+    #
+    # Even the 429 response needs to provide the cors headers to keep OHIF happy enough to process the 429
+    # response cleanly. So we do this stuff here to make it available for all responses:
+    #
+
+    cors_headers = None
+    if 'origin' in request.headers:
+        cors_headers = {
+            "Access-Control-Allow-Origin": request.headers['origin'],
+            "Access-Control-Allow-Methods": "GET"
+        }
+        if 'access-control-request-headers' in request.headers:
+            cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
+
+        logger.info("REQUEST METHOD {}".format(request.method))
+        logger.info("Request headers: {}".format(str(request.headers)))
+
+    if request.method == "OPTIONS":
+        resp = Response('')
+        resp.headers = cors_headers
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        return resp
+
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
     # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
     # with a zero count (with sane settings):
@@ -229,7 +342,9 @@ def root(url):
 
         if byte_count > MAX_PER_IP_PER_DAY:
             logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
-            return Response(status=429)
+            resp = Response(status=429)
+            resp.headers = cors_headers
+            return resp
 
         delay_time = calc_delay(byte_count)
         if delay_time > 0.0:
@@ -239,14 +354,16 @@ def root(url):
         last_global_usage = curr_use_global['day']
         last_global_byte_count = curr_use_global['bytes']
         if last_global_usage != todays_date:
-            byte_count = 0
+            last_global_byte_count = 0
 
         # Delays are not supported for the global limit:
         if last_global_byte_count > MAX_TOTAL_PER_DAY:
             logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
                                                                                                               last_global_byte_count,
                                                                                                               todays_date))
-            return Response(status=429)
+            resp = Response(status=429)
+            resp.headers = cors_headers
+            return resp
 
     if delay_time > 0.0:
         logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
@@ -256,24 +373,6 @@ def root(url):
 
     #logger.info("Request URL: {}".format(req_url))
 
-    logger.info("REQUEST METHOD {}".format(request.method))
-    logger.info("Request headers: {}".format(str(request.headers)))
-
-    cors_headers = None
-    if 'origin' in request.headers:
-        cors_headers = {
-            "Access-Control-Allow-Origin": request.headers['origin'],
-            "Access-Control-Allow-Methods": "GET"
-        }
-        if 'access-control-request-headers' in request.headers:
-            cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
-
-    if request.method == "OPTIONS":
-        resp = Response('')
-        resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
-        return resp
-
     #
     # Will need this for the teardown. Don't bother to update the delay during this request.
     #
@@ -281,7 +380,6 @@ def root(url):
     g.proxy_ip_addr = client_ip
     g.proxy_date = todays_date
     g.proxy_byte_count = 0
-
 
     #logger.info("Request headers: {}".format(str(request.headers)))
     # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
