@@ -29,6 +29,11 @@ echo "Preparing System..."
 apt-get -y install software-properties-common
 apt-get update -qq
 
+#
+# Needed due to CircleCI changes: dropping CA certs?
+
+apt-get install ca-certificates
+
 # Install apt-get dependencies
 echo "Installing Dependencies..."
 apt-get install -y --force-yes unzip libffi-dev libssl-dev python3-dev libpython3-dev git ruby g++ curl dos2unix python3.5
