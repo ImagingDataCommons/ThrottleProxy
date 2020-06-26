@@ -31,6 +31,7 @@ apt-get update -qq
 
 #
 # Needed due to CircleCI changes: dropping CA certs?
+#
 
 apt-get install ca-certificates
 

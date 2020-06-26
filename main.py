@@ -155,13 +155,25 @@ def counting_wrapper(req, delay_time):
     # do stuff on each call. So should implement full yield from semantics shown at
     # https://www.python.org/dev/peps/pep-0380/
 
-
-    # NO! Use Response.raw, not iter_content. The latter will decompress the result
-    # coming back from Google!
+    # Originally used this structure:
+    #for v in req.iter_content(chunk_size=CHUNK_SIZE):
+    #    yield v
+    # but it turns out that Requests decodes the stream from GZIP with that call, not
+    # allowing us to pass on the gzipped stream to the caller. So, we dig down into
+    # iter_content() and pull out what appears to be the relevant line from that call,
+    # and change the hardwired decode_content=True argument.
+    # See "def iter_content()" in https://github.com/psf/requests/blob/master/requests/models.py
+    # There is some more code in there to "simulate reading small chunks of the content", which
+    # appears to be irrelevant in our use case.
+    # Note the comment in that function that the actual bytes returned could be different than
+    # chunk size die to decoding. So by going with raw, we appear to be doing a better job of
+    # tracking what goes out the door.
+    #
     # (see https://requests.readthedocs.io/en/master/user/quickstart/#raw-response-content
     # and https://requests.readthedocs.io/en/master/community/faq/#encoded-data)
-    for v in req.iter_content(chunk_size=CHUNK_SIZE):
-        yield v
+
+    for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
+        yield chunk
 
         g.proxy_byte_count += CHUNK_SIZE
         if delay_time > 0.0:
@@ -387,17 +399,24 @@ def root(version, project, location, remainder):
                            headers={key: value for (key, value) in request.headers if key != 'Host'},
                            cookies=request.cookies,
                            allow_redirects=False)
-    # Tried to drop content-encoding from this list, as it is returned by Google, but then the browser complains
-    # that the download failed:
-    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
+    #
+    # NO! excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
+    #                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+    # In first iteration, included 'content-encoding' and 'content-length' in the excluded headers, since "Tried to drop
+    # content-encoding from this list, as it is returned by Google, but then the browser complains that the download failed".
+    # Proabably because Google said it was gzip encoded, but (see above comments on iter_content) we were unencoding the
+    # zipped content before sending it out. That is fixed, so sending the headers along:
+    #
+    excluded_headers = ['transfer-encoding', 'connection',
                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+
     headers = [(name, value) for (name, value) in req.raw.headers.items()
                if name.lower() not in excluded_headers]
     if cors_headers:
         for item in cors_headers.items():
             headers.append(item)
 
-    #logger.info("Response headers: {}".format(str(headers)))
+    logger.info("Response headers: {}".format(str(headers)))
     return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
 
 root.provide_automatic_options = False
