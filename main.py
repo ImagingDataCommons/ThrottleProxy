@@ -155,13 +155,25 @@ def counting_wrapper(req, delay_time):
     # do stuff on each call. So should implement full yield from semantics shown at
     # https://www.python.org/dev/peps/pep-0380/
 
-
-    # NO! Use Response.raw, not iter_content. The latter will decompress the result
-    # coming back from Google!
+    # Originally used this structure:
+    #for v in req.iter_content(chunk_size=CHUNK_SIZE):
+    #    yield v
+    # but it turns out that Requests decodes the stream from GZIP with that call, not
+    # allowing us to pass on the gzipped stream to the caller. So, we dig down into
+    # iter_content() and pull out what appears to be the relevant line from that call,
+    # and change the hardwired decode_content=True argument.
+    # See "def iter_content()" in https://github.com/psf/requests/blob/master/requests/models.py
+    # There is some more code in there to "simulate reading small chunks of the content", which
+    # appears to be irrelevant in our use case.
+    # Note the comment in that function that the actual bytes returned could be different than
+    # chunk size die to decoding. So by going with raw, we appear to be doing a better job of
+    # tracking what goes out the door.
+    #
     # (see https://requests.readthedocs.io/en/master/user/quickstart/#raw-response-content
     # and https://requests.readthedocs.io/en/master/community/faq/#encoded-data)
-    for v in req.iter_content(chunk_size=CHUNK_SIZE):
-        yield v
+
+    for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
+        yield chunk
 
         g.proxy_byte_count += CHUNK_SIZE
         if delay_time > 0.0:
@@ -197,7 +209,7 @@ def quota_usage():
     curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
     curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
-    logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+    #logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
     #
     # Always provide the cors headers to keep OHIF happy:
@@ -212,13 +224,13 @@ def quota_usage():
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
-        logger.info("REQUEST METHOD {}".format(request.method))
-        logger.info("Request headers: {}".format(str(request.headers)))
+        #logger.info("REQUEST METHOD {}".format(request.method))
+        #logger.info("Request headers: {}".format(str(request.headers)))
 
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -249,6 +261,8 @@ def quota_usage():
             last_global_byte_count = 0
 
         usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
+
+    logger.info("[STATUS] Received usage request: {}".format(json.dumps(usage_return)))
 
     return jsonify(usage_return)
 
@@ -293,7 +307,7 @@ def root(version, project, location, remainder):
 
     now_time = datetime.date.today()
     todays_date = str(now_time)
-    logger.info("Time is now {}".format(now_time.ctime()))
+    #logger.info("Time is now {}".format(now_time.ctime()))
 
     #logger.info("Getting data for {}".format(client_ip))
 
@@ -321,13 +335,13 @@ def root(version, project, location, remainder):
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
-        logger.info("REQUEST METHOD {}".format(request.method))
-        logger.info("Request headers: {}".format(str(request.headers)))
+        #logger.info("REQUEST METHOD {}".format(request.method))
+        #logger.info("Request headers: {}".format(str(request.headers)))
 
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -387,10 +401,17 @@ def root(version, project, location, remainder):
                            headers={key: value for (key, value) in request.headers if key != 'Host'},
                            cookies=request.cookies,
                            allow_redirects=False)
-    # Tried to drop content-encoding from this list, as it is returned by Google, but then the browser complains
-    # that the download failed:
-    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
+    #
+    # NO! excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
+    #                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+    # In first iteration, included 'content-encoding' and 'content-length' in the excluded headers, since "Tried to drop
+    # content-encoding from this list, as it is returned by Google, but then the browser complains that the download failed".
+    # Proabably because Google said it was gzip encoded, but (see above comments on iter_content) we were unencoding the
+    # zipped content before sending it out. That is fixed, so sending the headers along:
+    #
+    excluded_headers = ['transfer-encoding', 'connection',
                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+
     headers = [(name, value) for (name, value) in req.raw.headers.items()
                if name.lower() not in excluded_headers]
     if cors_headers:
