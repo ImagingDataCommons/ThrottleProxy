@@ -209,7 +209,7 @@ def quota_usage():
     curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
     curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
-    logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+    #logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
     #
     # Always provide the cors headers to keep OHIF happy:
@@ -224,13 +224,13 @@ def quota_usage():
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
-        logger.info("REQUEST METHOD {}".format(request.method))
-        logger.info("Request headers: {}".format(str(request.headers)))
+        #logger.info("REQUEST METHOD {}".format(request.method))
+        #logger.info("Request headers: {}".format(str(request.headers)))
 
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -261,6 +261,8 @@ def quota_usage():
             last_global_byte_count = 0
 
         usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
+
+    logger.info("[STATUS] Received usage request: {}".format(json.dumps(usage_return)))
 
     return jsonify(usage_return)
 
@@ -305,7 +307,7 @@ def root(version, project, location, remainder):
 
     now_time = datetime.date.today()
     todays_date = str(now_time)
-    logger.info("Time is now {}".format(now_time.ctime()))
+    #logger.info("Time is now {}".format(now_time.ctime()))
 
     #logger.info("Getting data for {}".format(client_ip))
 
@@ -333,13 +335,13 @@ def root(version, project, location, remainder):
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
-        logger.info("REQUEST METHOD {}".format(request.method))
-        logger.info("Request headers: {}".format(str(request.headers)))
+        #logger.info("REQUEST METHOD {}".format(request.method))
+        #logger.info("Request headers: {}".format(str(request.headers)))
 
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -416,7 +418,7 @@ def root(version, project, location, remainder):
         for item in cors_headers.items():
             headers.append(item)
 
-    logger.info("Response headers: {}".format(str(headers)))
+    #logger.info("Response headers: {}".format(str(headers)))
     return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
 
 root.provide_automatic_options = False
