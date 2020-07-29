@@ -122,6 +122,7 @@ def redis_retry_wrapper(get_arg):
     count = 0
     retval = None
     while retval is None:
+        logging.error("Redis retry is now count: {}".format(count))
         try:
             retval = redis_client.get(get_arg)
         except Exception as e:
@@ -146,6 +147,7 @@ def redis_transaction_wrapper():
     curr_use_per_ip = None
     curr_use_global = None
     while curr_use_per_ip is None:
+        logging.error("Redis transaction retry is now  count: {}".format(count))
         try:
             curr_use_per_ip, curr_use_global = \
                 redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
@@ -404,8 +406,10 @@ def root(version, project, location, remainder):
 
         # Get bytes for this IP and for global usage:
 
+        logger.info("[STATUS] Calling REDIS")
         curr_use_per_ip_str = redis_retry_wrapper(client_ip)
         curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
+        logger.info("[STATUS] Return from REDIS")
 
         curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
         curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
