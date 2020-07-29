@@ -148,7 +148,7 @@ def redis_transaction_wrapper():
     curr_use_per_ip = None
     curr_use_global = None
     need_answer = True
-    while need_answer is None:
+    while need_answer:
         try:
             curr_use_per_ip, curr_use_global = \
                 redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
