@@ -492,8 +492,8 @@ def root(version, project, location, remainder):
         # Proabably because Google said it was gzip encoded, but (see above comments on iter_content) we were unencoding the
         # zipped content before sending it out. That is fixed, so sending the headers along:
         #
-        excluded_headers = ['transfer-encoding', 'connection',
-                            'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+        #excluded_headers = ['transfer-encoding', 'connection',
+        excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         for name, value in req.raw.headers.items():
             logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
