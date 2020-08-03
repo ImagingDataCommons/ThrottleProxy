@@ -495,6 +495,9 @@ def root(version, project, location, remainder):
         excluded_headers = ['transfer-encoding', 'connection',
                             'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
+        for name, value in req.raw.headers.items():
+            logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
+
         headers = [(name, value) for (name, value) in req.raw.headers.items()
                    if name.lower() not in excluded_headers]
         if cors_headers:
