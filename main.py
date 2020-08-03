@@ -478,6 +478,9 @@ def root(version, project, location, remainder):
         g.proxy_date = todays_date
         g.proxy_byte_count = 0
 
+        for name, value in request.headers.items():
+            logger.info("OHIF AKS: {}: {}".format(name, value))
+
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
         req = auth_session.request(request.method, req_url, stream=True,
