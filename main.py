@@ -478,8 +478,9 @@ def root(version, project, location, remainder):
         g.proxy_date = todays_date
         g.proxy_byte_count = 0
 
-        for name, value in request.headers.items():
-            logger.info("OHIF AKS: {}: {}".format(name, value))
+        # For debug:
+        #for name, value in request.headers.items():
+        #    logger.info("OHIF ASK: {}: {}".format(name, value))
 
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
@@ -498,8 +499,9 @@ def root(version, project, location, remainder):
         #excluded_headers = ['transfer-encoding', 'connection',
         excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
-        for name, value in req.raw.headers.items():
-            logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
+        # For debug
+        #for name, value in req.raw.headers.items():
+        #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
         headers = [(name, value) for (name, value) in req.raw.headers.items()
                    if name.lower() not in excluded_headers]
