@@ -44,6 +44,8 @@ DEGRADATION_LEVEL_TWO_PAUSE = float(settings['DEGRADATION_LEVEL_TWO_PAUSE'])
 MAX_PER_IP_PER_DAY = int(settings['MAX_PER_IP_PER_DAY'])
 MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
 GLOBAL_IP_ADDRESS = "192.168.255.255"
+BACKOFF_COUNT = 3
+ABANDON_COUNT = 10
 
 app = Flask(__name__)
 
@@ -111,6 +113,57 @@ def increment_ips(pipe):
         logging.exception(e)
         raise e
 
+#
+# Redis is being flaky, with lots of "connection reset by peer" errors. Do retrys inside a wrapper:
+#
+
+def redis_retry_wrapper(get_arg):
+
+    count = 0
+    retval = None
+    need_answer = True
+    while need_answer:
+        try:
+            retval = redis_client.get(get_arg)
+            need_answer = False
+        except Exception as e:
+            logging.error("Exception in redis_retry: {}".format(str(e)))
+            logging.exception(e)
+            if count > ABANDON_COUNT:
+                raise e
+            if count > BACKOFF_COUNT:
+                time.sleep(0.01 * (count - BACKOFF_COUNT))
+            count += 1
+
+    return retval
+
+
+#
+# Redis is being flaky, with lots of "connection reset by peer" errors. Do retrys inside a wrapper:
+#
+
+def redis_transaction_wrapper():
+
+    count = 0
+    curr_use_per_ip = None
+    curr_use_global = None
+    need_answer = True
+    while need_answer:
+        try:
+            curr_use_per_ip, curr_use_global = \
+                redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
+            need_answer = False
+        except Exception as e:
+            logging.error("Exception in redis_transaction_wrapper: {}".format(str(e)))
+            logging.exception(e)
+            if count > ABANDON_COUNT:
+                raise e
+            if count > BACKOFF_COUNT:
+                time.sleep(0.01 * (count - BACKOFF_COUNT))
+            count += 1
+
+    return curr_use_per_ip, curr_use_global
+
 
 #
 # We only want to do one redis transaction per request. So we store up the data on the size and
@@ -125,8 +178,7 @@ def teardown(request):
             return
         #logger.info("teardown_request start")
         pre_millis = int(round(time.time() * 1000))
-        curr_use_per_ip, curr_use_global = \
-            redis_client.transaction(increment_ips, g.proxy_ip_addr, GLOBAL_IP_ADDRESS, value_from_callable=True)
+        curr_use_per_ip, curr_use_global = redis_transaction_wrapper()
         post_millis = int(round(time.time() * 1000))
         logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
                                                                          g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
@@ -219,8 +271,8 @@ def quota_usage():
 
     # Get bytes for this IP and for global usage:
 
-    curr_use_per_ip_str = redis_client.get(client_ip)
-    curr_use_global_str = redis_client.get(GLOBAL_IP_ADDRESS)
+    curr_use_per_ip_str = redis_retry_wrapper(client_ip)
+    curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
 
     curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
     curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
@@ -356,8 +408,10 @@ def root(version, project, location, remainder):
 
         # Get bytes for this IP and for global usage:
 
-        curr_use_per_ip_str = redis_client.get(client_ip)
-        curr_use_global_str = redis_client.get(GLOBAL_IP_ADDRESS)
+        logger.info("[STATUS] Calling REDIS")
+        curr_use_per_ip_str = redis_retry_wrapper(client_ip)
+        curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
+        logger.info("[STATUS] Return from REDIS")
 
         curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
         curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
@@ -413,7 +467,8 @@ def root(version, project, location, remainder):
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
             if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
 
-        #logger.info("Request URL: {}".format(req_url))
+        if request.query_string:
+            logger.info("Request URL with query: {}".format(req_url))
 
         #
         # Will need this for the teardown. Don't bother to update the delay during this request.
@@ -422,6 +477,10 @@ def root(version, project, location, remainder):
         g.proxy_ip_addr = client_ip
         g.proxy_date = todays_date
         g.proxy_byte_count = 0
+
+        # For debug:
+        #for name, value in request.headers.items():
+        #    logger.info("OHIF ASK: {}: {}".format(name, value))
 
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
@@ -437,8 +496,12 @@ def root(version, project, location, remainder):
         # Proabably because Google said it was gzip encoded, but (see above comments on iter_content) we were unencoding the
         # zipped content before sending it out. That is fixed, so sending the headers along:
         #
-        excluded_headers = ['transfer-encoding', 'connection',
-                            'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+        #excluded_headers = ['transfer-encoding', 'connection',
+        excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+
+        # For debug
+        #for name, value in req.raw.headers.items():
+        #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
         headers = [(name, value) for (name, value) in req.raw.headers.items()
                    if name.lower() not in excluded_headers]
