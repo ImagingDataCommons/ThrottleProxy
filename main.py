@@ -287,7 +287,8 @@ def quota_usage():
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
-            "Access-Control-Allow-Methods": "GET"
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Max-Age": "3600"
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
