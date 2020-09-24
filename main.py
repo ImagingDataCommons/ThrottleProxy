@@ -283,10 +283,8 @@ def quota_usage():
     # Always provide the cors headers to keep OHIF happy:
     #
 
-    logger.info("Pre-origin check")
     cors_headers = None
     if 'origin' in request.headers:
-        logger.info("Origin in request")
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
             "Access-Control-Allow-Methods": "GET",
@@ -356,7 +354,8 @@ def root(version, project, location, remainder):
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
-            "Access-Control-Allow-Methods": "GET"
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Max-Age": "3600"
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
@@ -381,7 +380,7 @@ def root(version, project, location, remainder):
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        # logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     #
