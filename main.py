@@ -375,6 +375,11 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
+    if request.method == "OPTIONS":
+        resp = Response('')
+        resp.headers = cors_headers
+        # logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        return resp
 
     #
     # Wrap all processing so that we return CORS headers even if we fall over while processing the request:
@@ -418,13 +423,6 @@ def root(version, project, location, remainder):
 
         logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
-
-
-        if request.method == "OPTIONS":
-            resp = Response('')
-            resp.headers = cors_headers
-            #logger.info("returning OPTION headers {}".format(str(cors_headers)))
-            return resp
 
         # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
         # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
