@@ -283,8 +283,10 @@ def quota_usage():
     # Always provide the cors headers to keep OHIF happy:
     #
 
+    logger.info("Pre-origin check")
     cors_headers = None
     if 'origin' in request.headers:
+        logger.info("Origin in request")
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
             "Access-Control-Allow-Methods": "GET",
