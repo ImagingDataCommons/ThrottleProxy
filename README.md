@@ -15,4 +15,4 @@ Using a redis server:
 3) Enable the Serverless VPC Access API
 3) Create a connector, e.g.: redis-connector default us-central1 10.8.180.0/28 200 300
 
-*Force Redeploy*
+**Force Redeploy**
