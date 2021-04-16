@@ -25,6 +25,9 @@ from google.auth.transport.requests import AuthorizedSession
 import datetime
 import redis
 import json
+from urllib.parse import urlparse
+
+
 
 #
 # Configuration
@@ -37,6 +40,7 @@ DISABLE = (settings['DISABLE'].lower() == 'true')
 CHUNK_SIZE = int(settings['CHUNK_SIZE'])
 GOOGLE_HC_URL = settings['GOOGLE_HC_URL']
 SUPPORTED_PROJECT = settings['SUPPORTED_PROJECT']
+ALLOWED_HOST = settings['ALLOWED_HOST']
 DEGRADATION_LEVEL_ONE = int(settings['DEGRADATION_LEVEL_ONE'])
 DEGRADATION_LEVEL_ONE_PAUSE = float(settings['DEGRADATION_LEVEL_ONE_PAUSE'])
 DEGRADATION_LEVEL_TWO = int(settings['DEGRADATION_LEVEL_TWO'])
@@ -262,6 +266,15 @@ def quota_usage():
 
     client_ip = request.remote_addr
 
+    #
+    # We need to force access via our own load balancer:
+    #
+
+    hostname = urlparse(request.base_url).hostname
+    if hostname != ALLOWED_HOST:
+        logger.info("request from {} has been dropped: invalid hostname".format(hostname))
+        abort(400)
+
     if DISABLE:
         logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
         abort(404)
@@ -362,6 +375,17 @@ def root(version, project, location, remainder):
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
+
+    #
+    # We need to force access via our own load balancer:
+    #
+
+    hostname = urlparse(request.base_url).hostname
+    if hostname != ALLOWED_HOST:
+        logger.info("request from {} has been dropped: invalid hostname".format(hostname))
+        resp = Response(status=400)
+        resp.headers = cors_headers
+        return resp
 
     if DISABLE:
         logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
