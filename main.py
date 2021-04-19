@@ -25,6 +25,9 @@ from google.auth.transport.requests import AuthorizedSession
 import datetime
 import redis
 import json
+from urllib.parse import urlparse
+
+
 
 #
 # Configuration
@@ -37,6 +40,7 @@ DISABLE = (settings['DISABLE'].lower() == 'true')
 CHUNK_SIZE = int(settings['CHUNK_SIZE'])
 GOOGLE_HC_URL = settings['GOOGLE_HC_URL']
 SUPPORTED_PROJECT = settings['SUPPORTED_PROJECT']
+ALLOWED_HOST = settings['ALLOWED_HOST']
 DEGRADATION_LEVEL_ONE = int(settings['DEGRADATION_LEVEL_ONE'])
 DEGRADATION_LEVEL_ONE_PAUSE = float(settings['DEGRADATION_LEVEL_ONE_PAUSE'])
 DEGRADATION_LEVEL_TWO = int(settings['DEGRADATION_LEVEL_TWO'])
@@ -262,6 +266,15 @@ def quota_usage():
 
     client_ip = request.remote_addr
 
+    #
+    # We need to force access via our own load balancer:
+    #
+
+    hostname = urlparse(request.base_url).hostname
+    if hostname != ALLOWED_HOST:
+        logger.info("request from {} has been dropped: invalid hostname".format(hostname))
+        abort(400)
+
     if DISABLE:
         logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
         abort(404)
@@ -287,7 +300,8 @@ def quota_usage():
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
-            "Access-Control-Allow-Methods": "GET"
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Max-Age": "3600"
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
@@ -298,7 +312,7 @@ def quota_usage():
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -353,13 +367,25 @@ def root(version, project, location, remainder):
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
-            "Access-Control-Allow-Methods": "GET"
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Max-Age": "3600"
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
+
+    #
+    # We need to force access via our own load balancer:
+    #
+
+    hostname = urlparse(request.base_url).hostname
+    if hostname != ALLOWED_HOST:
+        logger.info("request from {} has been dropped: invalid hostname".format(hostname))
+        resp = Response(status=400)
+        resp.headers = cors_headers
+        return resp
 
     if DISABLE:
         logger.info("request from {} has been dropped: proxy disabled".format(client_ip))
@@ -375,6 +401,11 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
+    if request.method == "OPTIONS":
+        resp = Response('')
+        resp.headers = cors_headers
+        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        return resp
 
     #
     # Wrap all processing so that we return CORS headers even if we fall over while processing the request:
@@ -418,13 +449,6 @@ def root(version, project, location, remainder):
 
         logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
-
-
-        if request.method == "OPTIONS":
-            resp = Response('')
-            resp.headers = cors_headers
-            #logger.info("returning OPTION headers {}".format(str(cors_headers)))
-            return resp
 
         # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
         # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
