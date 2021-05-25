@@ -463,9 +463,9 @@ def root(version, project, location, remainder):
         # when we are done:
         #
 
+        delay_time = 0.0
         if not in_our_region:
             byte_count = 0
-            delay_time = 0.0
 
             now_time = datetime.date.today()
             todays_date = str(now_time)
