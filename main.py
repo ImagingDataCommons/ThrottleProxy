@@ -184,6 +184,7 @@ def teardown(request):
 
     try:
         if not hasattr(g, 'proxy_ip_addr'):
+            logger.info("Skipping teardown: cloud access of %i bytes" % g.proxy_byte_count)
             return
         #logger.info("teardown_request start")
         pre_millis = int(round(time.time() * 1000))
