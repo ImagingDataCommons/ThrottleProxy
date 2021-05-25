@@ -529,7 +529,12 @@ def root(version, project, location, remainder):
 
             g.proxy_ip_addr = client_ip
             g.proxy_date = todays_date
-            g.proxy_byte_count = 0
+        #
+        # Both free and quota use this:
+        #
+
+        g.proxy_byte_count = 0
+
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
             if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
