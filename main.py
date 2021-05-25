@@ -1,5 +1,5 @@
 """
-Copyright 2020, Institute for Systems Biology
+Copyright 2020-2021, Institute for Systems Biology
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
 import time
+import requests
+import ipaddress
 from google.auth import default as get_credentials
 from google.auth.transport.requests import AuthorizedSession
 import datetime
@@ -47,7 +49,10 @@ DEGRADATION_LEVEL_TWO = int(settings['DEGRADATION_LEVEL_TWO'])
 DEGRADATION_LEVEL_TWO_PAUSE = float(settings['DEGRADATION_LEVEL_TWO_PAUSE'])
 MAX_PER_IP_PER_DAY = int(settings['MAX_PER_IP_PER_DAY'])
 MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
+FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
+
 GLOBAL_IP_ADDRESS = "192.168.255.255"
+CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 
@@ -252,6 +257,31 @@ def counting_wrapper(req, delay_time):
         raise e
 
 
+#
+# Discover the IPs living in the region where the proxy is deployed
+#
+
+def load_cidr_defs(free_region):
+    cidr_defs = []
+    if free_region != "NONE":
+        req = requests.request("GET", CLOUD_IP_URL)
+        cloud_prefixes = json.loads(req.content)
+        for prefix in cloud_prefixes['prefixes']:
+            if prefix['scope'] == 'us-central1':
+                cidr_defs.append(ipaddress.IPv4Network(prefix['ipv4Prefix']))
+    return cidr_defs
+
+#
+# Answer if the IP address is on the "free" list:
+#
+
+def is_local_cloud_addr(ip_addr, CIDR_defs):
+    ip_addr_obj = ipaddress.IPv4Address(ip_addr)
+    for cidr in CIDR_defs:
+        if ip_addr_obj in cidr:
+            return True
+    return False
+
 @app.route('/_ah/warmup')
 def warmup():
     # We are configured with warmup requests. If we need to do something, this is the place.
@@ -422,85 +452,89 @@ def root(version, project, location, remainder):
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
+
+        in_our_region = is_local_cloud_addr(client_ip, local_cidr_defs)
+
         #
         # If IP is over the daily per-IP quota, we return a 429 Too Many Requests. If we are over the global quota,
         # same thing. We are happy to just read the data at this point, and will atomically increment the whole count
         # when we are done:
         #
 
-        byte_count = 0
-        delay_time = 0.0
+        if not in_our_region:
+            byte_count = 0
+            delay_time = 0.0
 
-        now_time = datetime.date.today()
-        todays_date = str(now_time)
-        #logger.info("Time is now {}".format(now_time.ctime()))
+            now_time = datetime.date.today()
+            todays_date = str(now_time)
+            #logger.info("Time is now {}".format(now_time.ctime()))
 
-        #logger.info("Getting data for {}".format(client_ip))
+            #logger.info("Getting data for {}".format(client_ip))
 
-        # Get bytes for this IP and for global usage:
+            # Get bytes for this IP and for global usage:
 
-        logger.info("[STATUS] Calling REDIS")
-        curr_use_per_ip_str = redis_retry_wrapper(client_ip)
-        curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
-        logger.info("[STATUS] Return from REDIS")
+            logger.info("[STATUS] Calling REDIS")
+            curr_use_per_ip_str = redis_retry_wrapper(client_ip)
+            curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
+            logger.info("[STATUS] Return from REDIS")
 
-        curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
-        curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
+            curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
+            curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
-        logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+            logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
 
-        # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
-        # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
-        # with a zero count (with sane settings):
+            # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
+            # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
+            # with a zero count (with sane settings):
 
-        if curr_use_per_ip is not None:
-            last_usage = curr_use_per_ip['day']
-            byte_count = curr_use_per_ip['bytes']
-            if last_usage != todays_date:
-                byte_count = 0
+            if curr_use_per_ip is not None:
+                last_usage = curr_use_per_ip['day']
+                byte_count = curr_use_per_ip['bytes']
+                if last_usage != todays_date:
+                    byte_count = 0
 
-            if byte_count > MAX_PER_IP_PER_DAY:
-                logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
-                resp = Response(status=429)
-                resp.headers = cors_headers
-                return resp
+                if byte_count > MAX_PER_IP_PER_DAY:
+                    logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
+                    resp = Response(status=429)
+                    resp.headers = cors_headers
+                    return resp
 
-            delay_time = calc_delay(byte_count)
+                delay_time = calc_delay(byte_count)
+                if delay_time > 0.0:
+                    time.sleep(delay_time)
+
+            if curr_use_global is not None:
+                last_global_usage = curr_use_global['day']
+                last_global_byte_count = curr_use_global['bytes']
+                if last_global_usage != todays_date:
+                    last_global_byte_count = 0
+
+                # Delays are not supported for the global limit:
+                if last_global_byte_count > MAX_TOTAL_PER_DAY:
+                    logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
+                                                                                                                      last_global_byte_count,
+                                                                                                                      todays_date))
+                    resp = Response(status=429)
+                    resp.headers = cors_headers
+                    return resp
+
             if delay_time > 0.0:
-                time.sleep(delay_time)
+                logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
 
-        if curr_use_global is not None:
-            last_global_usage = curr_use_global['day']
-            last_global_byte_count = curr_use_global['bytes']
-            if last_global_usage != todays_date:
-                last_global_byte_count = 0
+            #
+            # Will need this for the teardown. Don't bother to update the delay during this request.
+            #
 
-            # Delays are not supported for the global limit:
-            if last_global_byte_count > MAX_TOTAL_PER_DAY:
-                logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
-                                                                                                                  last_global_byte_count,
-                                                                                                                  todays_date))
-                resp = Response(status=429)
-                resp.headers = cors_headers
-                return resp
-
-        if delay_time > 0.0:
-            logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
+            g.proxy_ip_addr = client_ip
+            g.proxy_date = todays_date
+            g.proxy_byte_count = 0
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
             if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
 
         if request.query_string:
             logger.info("Request URL with query: {}".format(req_url))
-
-        #
-        # Will need this for the teardown. Don't bother to update the delay during this request.
-        #
-
-        g.proxy_ip_addr = client_ip
-        g.proxy_date = todays_date
-        g.proxy_byte_count = 0
 
         # For debug:
         #for name, value in request.headers.items():
@@ -543,6 +577,12 @@ def root(version, project, location, remainder):
         return resp
 
 root.provide_automatic_options = False
+
+#
+# Load in the info on what IP addresses are in a zone that we will allow unlimited access
+#
+
+local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 
 if __name__ == '__main__':
     app.run()
