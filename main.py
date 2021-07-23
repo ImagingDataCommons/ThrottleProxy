@@ -53,7 +53,6 @@ FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
 
-
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
@@ -282,6 +281,8 @@ def load_cidr_defs(free_region):
 
 def load_cidr_list(list_string):
     cidr_defs = []
+    if list_string == "NONE":
+        return cidr_defs
     cidr_chunks = list_string.split(';')
     for cidr_chunk in cidr_chunks:
         cidr_defs.append(ipaddress.IPv4Network(cidr_chunk))
