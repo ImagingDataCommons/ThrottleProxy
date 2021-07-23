@@ -50,6 +50,8 @@ DEGRADATION_LEVEL_TWO_PAUSE = float(settings['DEGRADATION_LEVEL_TWO_PAUSE'])
 MAX_PER_IP_PER_DAY = int(settings['MAX_PER_IP_PER_DAY'])
 MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
 FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
+ALLOWED_LIST = settings['ALLOWED_LIST']
+DENY_LIST = settings['DENY_LIST']
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -274,10 +276,23 @@ def load_cidr_defs(free_region):
     return cidr_defs
 
 #
-# Answer if the IP address is on the "free" list:
+# Load in lists of CIDR defs for IPs we will allow or deny:
 #
 
-def is_local_cloud_addr(ip_addr, CIDR_defs):
+def load_cidr_list(list_string):
+    cidr_defs = []
+    if list_string == "NONE":
+        return cidr_defs
+    cidr_chunks = list_string.split(';')
+    for cidr_chunk in cidr_chunks:
+        cidr_defs.append(ipaddress.IPv4Network(cidr_chunk))
+    return cidr_defs
+
+#
+# Answer if the IP address is in the given CIDR list:
+#
+
+def is_in_cidr_list(ip_addr, CIDR_defs):
     ip_addr_obj = ipaddress.IPv4Address(ip_addr)
     for cidr in CIDR_defs:
         if ip_addr_obj in cidr:
@@ -408,6 +423,31 @@ def root(version, project, location, remainder):
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
 
+
+    #
+    # If an allowed hosts list exists, and the caller is not on it, we stop right here. Designed to restrict
+    # access to e.g. development team:
+    #
+
+    is_denied = (len(allow_cidr_defs) > 0) and not is_in_cidr_list(client_ip, allow_cidr_defs)
+    if is_denied:
+        logger.info("request from {} has been dropped: not an allowed IP".format(client_ip))
+        resp = Response(status=403)
+        resp.headers = cors_headers
+        return resp
+
+    #
+    # If a denied hosts list exists, and the caller is on it, we stop right here. Designed to block
+    # IP addresses that are abusing the proxy quota system:
+    #
+
+    is_denied = (len(deny_cidr_defs) > 0) and is_in_cidr_list(client_ip, deny_cidr_defs)
+    if is_denied:
+        logger.info("request from {} has been dropped: a blocked IP".format(client_ip))
+        resp = Response(status=403)
+        resp.headers = cors_headers
+        return resp
+
     #
     # We need to force access via our own load balancer:
     #
@@ -455,7 +495,7 @@ def root(version, project, location, remainder):
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
 
-        in_our_region = is_local_cloud_addr(client_ip, local_cidr_defs)
+        in_our_region = is_in_cidr_list(client_ip, local_cidr_defs)
 
         #
         # If IP is over the daily per-IP quota, we return a 429 Too Many Requests. If we are over the global quota,
@@ -590,6 +630,8 @@ root.provide_automatic_options = False
 #
 
 local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
+allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
+deny_cidr_defs = load_cidr_list(DENY_LIST)
 
 if __name__ == '__main__':
     app.run()
