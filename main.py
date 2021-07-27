@@ -196,6 +196,16 @@ def teardown(request):
         logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
                                                                          g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
         logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
+
+        end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
+
+        # We want to track rapid egress without flooding the system with each log message. So we look for
+        # this message to send to pubsub:
+        if end_gb > g.start_gb:
+            logger.info("DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(curr_use_per_ip['day'],
+                                                                                       g.proxy_ip_addr,
+                                                                                       curr_use_per_ip['bytes'] ))
+
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
         #logger.info("teardown_request done")
         return
@@ -242,7 +252,7 @@ def counting_wrapper(req, delay_time):
     # There is some more code in there to "simulate reading small chunks of the content", which
     # appears to be irrelevant in our use case.
     # Note the comment in that function that the actual bytes returned could be different than
-    # chunk size die to decoding. So by going with raw, we appear to be doing a better job of
+    # chunk size due to decoding. So by going with raw, we appear to be doing a better job of
     # tracking what goes out the door.
     #
     # (see https://requests.readthedocs.io/en/master/user/quickstart/#raw-response-content
@@ -504,6 +514,7 @@ def root(version, project, location, remainder):
         #
 
         delay_time = 0.0
+        start_gb = 0
         if not in_our_region:
             byte_count = 0
 
@@ -542,6 +553,8 @@ def root(version, project, location, remainder):
                     resp.headers = cors_headers
                     return resp
 
+                start_gb = byte_count // 10737418240  # Integer divison by 10 GB
+
                 delay_time = calc_delay(byte_count)
                 if delay_time > 0.0:
                     time.sleep(delay_time)
@@ -570,6 +583,8 @@ def root(version, project, location, remainder):
 
             g.proxy_ip_addr = client_ip
             g.proxy_date = todays_date
+            g.start_gb = start_gb
+
         #
         # Both free and quota use this:
         #
