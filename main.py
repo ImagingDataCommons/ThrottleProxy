@@ -620,6 +620,9 @@ def root(version, project, location, remainder):
         excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
+        logger.info("GOOGLE RETURNS STATUS: {}".format(req.status))
+
+        # For debug
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
@@ -630,7 +633,7 @@ def root(version, project, location, remainder):
                 headers.append(item)
 
         #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
+        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
