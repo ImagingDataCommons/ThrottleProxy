@@ -52,6 +52,7 @@ MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
 FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
+UA_SECRET = settings['UA_SECRET']
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -459,6 +460,19 @@ def root(version, project, location, remainder):
         return resp
 
     #
+    # If user-agent secret exists, and the user agent string does not contain it, we stop right here.
+    # Another poor-man's method to restrict access to the e.g. development team:
+    #
+
+    if UA_SECRET != "NONE":
+        ua_string = request.headers.get('User-Agent')
+        if UA_SECRET not in ua_string:
+            logger.info("request from {} has been dropped: missing UA secret".format(client_ip))
+            resp = Response(status=403)
+            resp.headers = cors_headers
+            return resp
+
+    #
     # We need to force access via our own load balancer:
     #
 
@@ -504,6 +518,12 @@ def root(version, project, location, remainder):
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
+
+        #
+        # The idea here is that a client operating in our cloud region would not have a quota, since there
+        # would be no egress charge. But it turns out that bytes passing through the web app are going to get
+        # charged anyway, so the functionality is of limited use:
+        #
 
         in_our_region = is_in_cidr_list(client_ip, local_cidr_defs)
 
@@ -620,6 +640,9 @@ def root(version, project, location, remainder):
         excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
+        #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
+
+        # For debug
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
@@ -630,7 +653,7 @@ def root(version, project, location, remainder):
                 headers.append(item)
 
         #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
+        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
