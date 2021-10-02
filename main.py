@@ -208,7 +208,7 @@ def teardown(request):
                                                                                        curr_use_per_ip['bytes'] ))
 
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
-        logger.info("Chunk size was {}".format(CHUNK_SIZE))
+        #logger.info("Chunk size was {}".format(CHUNK_SIZE))
         #logger.info("teardown_request done")
         return
     except Exception as e:
