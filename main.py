@@ -52,6 +52,7 @@ MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
 FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
+UA_SECRET = settings['UA_SECRET']
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -196,7 +197,18 @@ def teardown(request):
         logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
                                                                          g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
         logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
+
+        end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
+
+        # We want to track rapid egress without flooding the system with each log message. So we look for
+        # this message to send to pubsub:
+        if end_gb > g.start_gb:
+            logger.info("DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(curr_use_per_ip['day'],
+                                                                                       g.proxy_ip_addr,
+                                                                                       curr_use_per_ip['bytes'] ))
+
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
+        #logger.info("Chunk size was {}".format(CHUNK_SIZE))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -242,7 +254,7 @@ def counting_wrapper(req, delay_time):
     # There is some more code in there to "simulate reading small chunks of the content", which
     # appears to be irrelevant in our use case.
     # Note the comment in that function that the actual bytes returned could be different than
-    # chunk size die to decoding. So by going with raw, we appear to be doing a better job of
+    # chunk size due to decoding. So by going with raw, we appear to be doing a better job of
     # tracking what goes out the door.
     #
     # (see https://requests.readthedocs.io/en/master/user/quickstart/#raw-response-content
@@ -256,7 +268,7 @@ def counting_wrapper(req, delay_time):
             if delay_time > 0.0:
                 time.sleep(delay_time)
     except Exception as e:
-        logging.error("Exception in teardown: {}".format(str(e)))
+        logging.error("Exception in wrapper: {}".format(str(e)))
         logging.exception(e)
         raise e
 
@@ -449,6 +461,19 @@ def root(version, project, location, remainder):
         return resp
 
     #
+    # If user-agent secret exists, and the user agent string does not contain it, we stop right here.
+    # Another poor-man's method to restrict access to the e.g. development team:
+    #
+
+    if UA_SECRET != "NONE":
+        ua_string = request.headers.get('User-Agent')
+        if UA_SECRET not in ua_string:
+            logger.info("request from {} has been dropped: missing UA secret".format(client_ip))
+            resp = Response(status=403)
+            resp.headers = cors_headers
+            return resp
+
+    #
     # We need to force access via our own load balancer:
     #
 
@@ -495,6 +520,12 @@ def root(version, project, location, remainder):
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
 
+        #
+        # The idea here is that a client operating in our cloud region would not have a quota, since there
+        # would be no egress charge. But it turns out that bytes passing through the web app are going to get
+        # charged anyway, so the functionality is of limited use:
+        #
+
         in_our_region = is_in_cidr_list(client_ip, local_cidr_defs)
 
         #
@@ -504,6 +535,7 @@ def root(version, project, location, remainder):
         #
 
         delay_time = 0.0
+        start_gb = 0
         if not in_our_region:
             byte_count = 0
 
@@ -542,6 +574,8 @@ def root(version, project, location, remainder):
                     resp.headers = cors_headers
                     return resp
 
+                start_gb = byte_count // 10737418240  # Integer divison by 10 GB
+
                 delay_time = calc_delay(byte_count)
                 if delay_time > 0.0:
                     time.sleep(delay_time)
@@ -570,6 +604,8 @@ def root(version, project, location, remainder):
 
             g.proxy_ip_addr = client_ip
             g.proxy_date = todays_date
+            g.start_gb = start_gb
+
         #
         # Both free and quota use this:
         #
@@ -605,6 +641,9 @@ def root(version, project, location, remainder):
         excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
+        #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
+
+        # For debug
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
@@ -615,7 +654,7 @@ def root(version, project, location, remainder):
                 headers.append(item)
 
         #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
+        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
