@@ -208,6 +208,7 @@ def teardown(request):
                                                                                        curr_use_per_ip['bytes'] ))
 
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
+        #logger.info("Chunk size was {}".format(CHUNK_SIZE))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -267,7 +268,7 @@ def counting_wrapper(req, delay_time):
             if delay_time > 0.0:
                 time.sleep(delay_time)
     except Exception as e:
-        logging.error("Exception in teardown: {}".format(str(e)))
+        logging.error("Exception in wrapper: {}".format(str(e)))
         logging.exception(e)
         raise e
 
