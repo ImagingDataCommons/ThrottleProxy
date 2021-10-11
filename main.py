@@ -261,6 +261,7 @@ def counting_wrapper(req, delay_time):
     # and https://requests.readthedocs.io/en/master/community/faq/#encoded-data)
 
     try:
+        print("type = ", type(req.raw))
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
