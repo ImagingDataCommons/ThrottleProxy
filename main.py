@@ -264,6 +264,7 @@ def counting_wrapper(req, delay_time):
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
+            print("tell byte count: {}".format(req.raw.tell()))
             g.proxy_byte_count += CHUNK_SIZE
             if delay_time > 0.0:
                 time.sleep(delay_time)
@@ -355,7 +356,7 @@ def quota_usage():
     # Always provide the cors headers to keep OHIF happy:
     #
 
-    cors_headers = None
+    cors_headers = {}
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
@@ -367,6 +368,9 @@ def quota_usage():
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
+
+    # Always add this:
+    cors_headers["Strict-Transport-Security"] = "max-age = 3600; includeSubdomains"
 
     if request.method == "OPTIONS":
         resp = Response('')
@@ -422,7 +426,7 @@ def root(version, project, location, remainder):
     # errors cleanly. So we do this stuff here to make it available for all responses:
     #
 
-    cors_headers = None
+    cors_headers = {}
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
@@ -431,6 +435,9 @@ def root(version, project, location, remainder):
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
+
+    # Always add this:
+    cors_headers["Strict-Transport-Security"] = "max-age = 3600; includeSubdomains"
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
