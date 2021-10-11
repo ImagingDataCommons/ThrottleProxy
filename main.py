@@ -265,7 +265,7 @@ def counting_wrapper(req, delay_time):
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
-            print("tell byte count: {}".format(req.raw.tell()))
+            print("chunklen: {}".format(len(chunk)))
             g.proxy_byte_count += CHUNK_SIZE
             if delay_time > 0.0:
                 time.sleep(delay_time)
