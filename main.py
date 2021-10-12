@@ -265,7 +265,7 @@ def counting_wrapper(req, delay_time):
             yield chunk
 
             if len(chunk) != CHUNK_SIZE:
-                print("MiniChunk: {} ".format(len(chunk)))
+                logger.info("MiniChunk: {} ".format(len(chunk)))
             g.proxy_byte_count += len(chunk)
             if delay_time > 0.0:
                 time.sleep(delay_time)
