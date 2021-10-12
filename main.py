@@ -261,14 +261,12 @@ def counting_wrapper(req, delay_time):
     # and https://requests.readthedocs.io/en/master/community/faq/#encoded-data)
 
     try:
-        print("type = ", type(req.raw))
-        per_call = 0
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
-            per_call += 1
-            print("chunklen: {} {}".format(per_call, len(chunk)))
-            g.proxy_byte_count += CHUNK_SIZE
+            if len(chunk) != CHUNK_SIZE:
+                print("MiniChunk: {} ".format(len(chunk)))
+            g.proxy_byte_count += len(chunk)
             if delay_time > 0.0:
                 time.sleep(delay_time)
     except Exception as e:
