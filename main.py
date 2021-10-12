@@ -30,7 +30,6 @@ import json
 from urllib.parse import urlparse
 
 
-
 #
 # Configuration
 #
@@ -208,7 +207,8 @@ def teardown(request):
                                                                                        curr_use_per_ip['bytes'] ))
 
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
-        #logger.info("Chunk size was {}".format(CHUNK_SIZE))
+        logger.info("Chunk size was {}".format(CHUNK_SIZE))
+        logger.info("reported bytes {}".format(g.proxy_byte_count))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -262,10 +262,12 @@ def counting_wrapper(req, delay_time):
 
     try:
         print("type = ", type(req.raw))
+        per_call = 0
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
-            print("chunklen: {}".format(len(chunk)))
+            per_call += 1
+            print("chunklen: {} {}".format(per_call, len(chunk)))
             g.proxy_byte_count += CHUNK_SIZE
             if delay_time > 0.0:
                 time.sleep(delay_time)
