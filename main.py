@@ -264,8 +264,6 @@ def counting_wrapper(req, delay_time):
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
-            if len(chunk) != CHUNK_SIZE:
-                logger.info("MiniChunk: {} ".format(len(chunk)))
             g.proxy_byte_count += len(chunk)
             if delay_time > 0.0:
                 time.sleep(delay_time)
@@ -371,7 +369,7 @@ def quota_usage():
         #logger.info("Request headers: {}".format(str(request.headers)))
 
     # Always add this:
-    cors_headers["Strict-Transport-Security"] = "max-age = 3600; includeSubdomains"
+    cors_headers["Strict-Transport-Security"] = "max-age=3600; includeSubDomains"
 
     if request.method == "OPTIONS":
         resp = Response('')
