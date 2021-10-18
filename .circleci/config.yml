@@ -117,6 +117,10 @@ jobs:
           name: Staging
           command: |
             sudo -E /bin/bash ./shell/gcloud-pull-staging-files.sh
+      - run:
+          name: Compare Config
+          command: |
+            sudo -E /bin/bash ./shell/compareConfig.sh "gs://${DEPLOYMENT_BUCKET}/${IDC_PROXY_CONFIG}"
       - save_cache:
           key: idc-proxy-{{ epoch }}
           paths:
