@@ -38,8 +38,8 @@ if [ ${OSTYPE} == 'darwin20' ]; then
     CURR_STR=`date -r ${CURR_SECS}`
     PEN_STR=`date -r ${PEN_SECS}`
 else
-    CURR_STR=`date -d ${CURR_SECS}`
-    PEN_STR=`date -d ${PEN_SECS}`
+    CURR_STR=`date -d @${CURR_SECS}`
+    PEN_STR=`date -d @${PEN_SECS}`
 fi
 
 gsutil cp ${CONFIG_PATH}"#"${PENULT} ${TMP_LAST} > /dev/null 2>&1
