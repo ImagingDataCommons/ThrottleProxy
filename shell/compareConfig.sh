@@ -31,11 +31,21 @@ cat ${TMP_VERS} | sort -n > ${TMP_SORT}
 CURR=`tail -n 1 ${TMP_SORT}`
 PENULT=`tail -n 2 ${TMP_SORT} | head -n 1`
 
+(( CURR_SECS=(${CURR})/1000000 ))
+(( PEN_SECS=(${PENULT})/1000000 ))
+
+if [ ${OSTYPE} == 'darwin20' ]; then
+    CURR_STR=`date -r ${CURR_SECS}`
+    PEN_STR=`date -r ${PEN_SECS}`
+else
+    CURR_STR=`date -d ${CURR_SECS}`
+    PEN_STR=`date -d ${PEN_SECS}`
+fi
 
 gsutil cp ${CONFIG_PATH}"#"${PENULT} ${TMP_LAST} > /dev/null 2>&1
 gsutil cp ${CONFIG_PATH}"#"${CURR} ${TMP_CURR}  > /dev/null 2>&1
 
-echo "Diff of last to current for" ${CONFIG_PATH} ":"
+echo "Diff of previous (" ${PEN_STR} ") to current (" ${CURR_STR} ") for" ${CONFIG_PATH} ":"
 diff ${TMP_LAST} ${TMP_CURR}
 
 trap 'rm -f ${TMP_VERS} ${TMP_SORT} ${TMP_CURR} ${TMP_LAST}' EXIT
