@@ -52,6 +52,9 @@ FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
 UA_SECRET = settings['UA_SECRET']
+CURRENT_STORE_CHUNKS = settings['CURRENT_STORE'].split('/')
+RESTRICT_LIST = settings['RESTRICT_LIST']
+RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -316,6 +319,16 @@ def warmup():
     # We are configured with warmup requests. If we need to do something, this is the place.
     return '', 200, {}
 
+
+#
+# Send this back even if they just hit the server w/o a valid endpoint:
+#
+
+@app.route("/")
+def return_404():
+    headers = {"Strict-Transport-Security": "max-age=3600; includeSubDomains"}
+    return Response("Not Found", status=404, headers=headers)
+
 #
 # Let callers know where they stand, out of band:
 #
@@ -406,9 +419,10 @@ def quota_usage():
 
         usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
 
-    logger.info("[STATUS] Received usage request: {}".format(json.dumps(usage_return)))
+    as_json = json.dumps(usage_return)
+    logger.info("[STATUS] Received usage request: {}".format(as_json))
 
-    return jsonify(usage_return)
+    return Response(as_json, mimetype='application/json', headers=cors_headers)
 
 #
 # Needs to match on e.g. this:
@@ -467,6 +481,18 @@ def root(version, project, location, remainder):
         return resp
 
     #
+    # If a restricted hosts list exists, and the caller is on it, we wre going to knock their quota down
+    # by the specified amount. Allows us to throttle certain IPs to a lower level than the general public
+    #
+
+    quota_multiplier = 1.0
+    is_restricted = (len(restrict_cidr_defs) > 0) and is_in_cidr_list(client_ip, restrict_cidr_defs)
+    if is_restricted:
+        logger.info("request from {} has restricted quota".format(client_ip))
+        quota_multiplier = RESTRICT_MULTIPLIER
+
+
+    #
     # If user-agent secret exists, and the user agent string does not contain it, we stop right here.
     # Another poor-man's method to restrict access to the e.g. development team:
     #
@@ -503,6 +529,24 @@ def root(version, project, location, remainder):
         resp = Response(status=404)
         resp.headers = cors_headers
         return resp
+
+    #
+    # We want to restrict the proxy to only serve content from our current DICOM store, and not older
+    # versions. This means the remainder must match what we specify
+    # form: idc/dicomStores/v5/dicomWeb',
+    #
+
+    remainder_chunks = remainder.split('/')
+    for i in range(4):
+        if remainder_chunks[i] != CURRENT_STORE_CHUNKS[i]:
+            logger.info("request from {} has been dropped: incorrect store".format(client_ip))
+            resp = Response(status=404)
+            resp.headers = cors_headers
+            return resp
+
+    #
+    # Handle CORS:
+    #
 
     if request.method == "OPTIONS":
         resp = Response('')
@@ -574,7 +618,7 @@ def root(version, project, location, remainder):
                 if last_usage != todays_date:
                     byte_count = 0
 
-                if byte_count > MAX_PER_IP_PER_DAY:
+                if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
                     logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
@@ -677,6 +721,7 @@ root.provide_automatic_options = False
 local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
+restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
 
 if __name__ == '__main__':
     app.run()
