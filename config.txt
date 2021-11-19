@@ -7,6 +7,7 @@ ALLOWED_HOST=Fully qualified hostname of this proxy
 FREE_CLOUD_REGION=Google region not subject to quota (or "NONE")
 ALLOWED_LIST=List of semicolon-delimited CIDR IPs that are allowed in, or NONE
 DENY_LIST=List of semicolon-delimited CIDR IPs to block, or NONE
+UA_SECRET=User-agent secret, or NONE
 CHUNK_SIZE=Integer streaming chunk size (also increment of bytes counted) e.g. 16384
 DEGRADATION_LEVEL_ONE=Integer total bytes per IP for degraded level one (-1 to shut this off)
 DEGRADATION_LEVEL_ONE_PAUSE=Float seconds e.g. 0.05

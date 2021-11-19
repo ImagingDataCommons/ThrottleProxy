@@ -30,7 +30,6 @@ import json
 from urllib.parse import urlparse
 
 
-
 #
 # Configuration
 #
@@ -52,6 +51,10 @@ MAX_TOTAL_PER_DAY = int(settings['MAX_TOTAL_PER_DAY'])
 FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
+UA_SECRET = settings['UA_SECRET']
+CURRENT_STORE_CHUNKS = settings['CURRENT_STORE'].split('/')
+RESTRICT_LIST = settings['RESTRICT_LIST']
+RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -207,6 +210,8 @@ def teardown(request):
                                                                                        curr_use_per_ip['bytes'] ))
 
         logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
+        logger.info("Chunk size was {}".format(CHUNK_SIZE))
+        logger.info("reported bytes {}".format(g.proxy_byte_count))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -262,11 +267,11 @@ def counting_wrapper(req, delay_time):
         for chunk in req.raw.stream(CHUNK_SIZE, decode_content=False):
             yield chunk
 
-            g.proxy_byte_count += CHUNK_SIZE
+            g.proxy_byte_count += len(chunk)
             if delay_time > 0.0:
                 time.sleep(delay_time)
     except Exception as e:
-        logging.error("Exception in teardown: {}".format(str(e)))
+        logging.error("Exception in wrapper: {}".format(str(e)))
         logging.exception(e)
         raise e
 
@@ -314,6 +319,16 @@ def warmup():
     # We are configured with warmup requests. If we need to do something, this is the place.
     return '', 200, {}
 
+
+#
+# Send this back even if they just hit the server w/o a valid endpoint:
+#
+
+@app.route("/")
+def return_404():
+    headers = {"Strict-Transport-Security": "max-age=3600; includeSubDomains"}
+    return Response("Not Found", status=404, headers=headers)
+
 #
 # Let callers know where they stand, out of band:
 #
@@ -353,7 +368,7 @@ def quota_usage():
     # Always provide the cors headers to keep OHIF happy:
     #
 
-    cors_headers = None
+    cors_headers = {}
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
@@ -365,6 +380,9 @@ def quota_usage():
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
+
+    # Always add this:
+    cors_headers["Strict-Transport-Security"] = "max-age=3600; includeSubDomains"
 
     if request.method == "OPTIONS":
         resp = Response('')
@@ -401,9 +419,10 @@ def quota_usage():
 
         usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
 
-    logger.info("[STATUS] Received usage request: {}".format(json.dumps(usage_return)))
+    as_json = json.dumps(usage_return)
+    logger.info("[STATUS] Received usage request: {}".format(as_json))
 
-    return jsonify(usage_return)
+    return Response(as_json, mimetype='application/json', headers=cors_headers)
 
 #
 # Needs to match on e.g. this:
@@ -420,7 +439,7 @@ def root(version, project, location, remainder):
     # errors cleanly. So we do this stuff here to make it available for all responses:
     #
 
-    cors_headers = None
+    cors_headers = {}
     if 'origin' in request.headers:
         cors_headers = {
             "Access-Control-Allow-Origin": request.headers['origin'],
@@ -429,6 +448,9 @@ def root(version, project, location, remainder):
         }
         if 'access-control-request-headers' in request.headers:
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
+
+    # Always add this:
+    cors_headers["Strict-Transport-Security"] = "max-age = 3600; includeSubdomains"
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
@@ -459,6 +481,31 @@ def root(version, project, location, remainder):
         return resp
 
     #
+    # If a restricted hosts list exists, and the caller is on it, we wre going to knock their quota down
+    # by the specified amount. Allows us to throttle certain IPs to a lower level than the general public
+    #
+
+    quota_multiplier = 1.0
+    is_restricted = (len(restrict_cidr_defs) > 0) and is_in_cidr_list(client_ip, restrict_cidr_defs)
+    if is_restricted:
+        logger.info("request from {} has restricted quota".format(client_ip))
+        quota_multiplier = RESTRICT_MULTIPLIER
+
+
+    #
+    # If user-agent secret exists, and the user agent string does not contain it, we stop right here.
+    # Another poor-man's method to restrict access to the e.g. development team:
+    #
+
+    if UA_SECRET != "NONE":
+        ua_string = request.headers.get('User-Agent')
+        if UA_SECRET not in ua_string:
+            logger.info("request from {} has been dropped: missing UA secret".format(client_ip))
+            resp = Response(status=403)
+            resp.headers = cors_headers
+            return resp
+
+    #
     # We need to force access via our own load balancer:
     #
 
@@ -483,6 +530,24 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
+    #
+    # We want to restrict the proxy to only serve content from our current DICOM store, and not older
+    # versions. This means the remainder must match what we specify
+    # form: idc/dicomStores/v5/dicomWeb',
+    #
+
+    remainder_chunks = remainder.split('/')
+    for i in range(4):
+        if remainder_chunks[i] != CURRENT_STORE_CHUNKS[i]:
+            logger.info("request from {} has been dropped: incorrect store".format(client_ip))
+            resp = Response(status=404)
+            resp.headers = cors_headers
+            return resp
+
+    #
+    # Handle CORS:
+    #
+
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
@@ -504,6 +569,12 @@ def root(version, project, location, remainder):
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
+
+        #
+        # The idea here is that a client operating in our cloud region would not have a quota, since there
+        # would be no egress charge. But it turns out that bytes passing through the web app are going to get
+        # charged anyway, so the functionality is of limited use:
+        #
 
         in_our_region = is_in_cidr_list(client_ip, local_cidr_defs)
 
@@ -547,7 +618,7 @@ def root(version, project, location, remainder):
                 if last_usage != todays_date:
                     byte_count = 0
 
-                if byte_count > MAX_PER_IP_PER_DAY:
+                if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
                     logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
@@ -620,6 +691,9 @@ def root(version, project, location, remainder):
         excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
+        #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
+
+        # For debug
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
@@ -630,7 +704,7 @@ def root(version, project, location, remainder):
                 headers.append(item)
 
         #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers)
+        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
@@ -647,6 +721,7 @@ root.provide_automatic_options = False
 local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
+restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
 
 if __name__ == '__main__':
     app.run()
