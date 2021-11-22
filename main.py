@@ -56,7 +56,7 @@ CURRENT_STORE_CHUNKS = settings['CURRENT_STORE'].split('/')
 RESTRICT_LIST = settings['RESTRICT_LIST']
 RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 HSTS_AGE = int(settings['HSTS_AGE'])
-HSTS_HEADER = '"max-age={}; includeSubDomains; preload"'.format(HSTS_AGE)
+HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -328,7 +328,7 @@ def warmup():
 
 @app.route("/")
 def return_404():
-    headers = {"Strict-Transport-Security": HSTS_HEADER}
+    headers = {"Strict-Transport-Security": hsts_header}
     return Response("Not Found", status=404, headers=headers)
 
 #
@@ -384,7 +384,7 @@ def quota_usage():
         #logger.info("Request headers: {}".format(str(request.headers)))
 
     # Always add this:
-    cors_headers["Strict-Transport-Security"] = HSTS_HEADER
+    cors_headers["Strict-Transport-Security"] = hsts_header
 
     if request.method == "OPTIONS":
         resp = Response('')
@@ -452,7 +452,7 @@ def root(version, project, location, remainder):
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
     # Always add this:
-    cors_headers["Strict-Transport-Security"] = HSTS_HEADER
+    cors_headers["Strict-Transport-Security"] = hsts_header
 
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
@@ -724,6 +724,9 @@ local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
 restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
+hsts_preload_directive = "; preload" if HSTS_PRELOAD else ""
+hsts_header = '"max-age={}; includeSubDomains{}"'.format(HSTS_AGE, hsts_preload_directive)
+
 
 if __name__ == '__main__':
     app.run()
