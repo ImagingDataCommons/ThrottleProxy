@@ -725,7 +725,7 @@ allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
 restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
 hsts_preload_directive = "; preload" if HSTS_PRELOAD else ""
-hsts_header = '"max-age={}; includeSubDomains{}"'.format(HSTS_AGE, hsts_preload_directive)
+hsts_header = 'max-age={}; includeSubDomains{}'.format(HSTS_AGE, hsts_preload_directive)
 
 
 if __name__ == '__main__':
