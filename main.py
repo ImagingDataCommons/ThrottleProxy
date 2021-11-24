@@ -306,7 +306,7 @@ def load_store_list(list_string):
     allowed = list_string.split(';')
     for allow in allowed:
         chunk_list = allow.split('/')
-        if len(chunk_list != 4):
+        if len(chunk_list) != 4:
             raise Exception("Bad store definition")
         store_chunks.append(chunk_list)
     return store_chunks
