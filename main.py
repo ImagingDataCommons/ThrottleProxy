@@ -52,7 +52,7 @@ FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
 UA_SECRET = settings['UA_SECRET']
-CURRENT_STORE_CHUNKS = settings['CURRENT_STORE'].split('/')
+CURRENT_STORES = settings['CURRENT_STORES']
 RESTRICT_LIST = settings['RESTRICT_LIST']
 RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 HSTS_AGE = int(settings['HSTS_AGE'])
@@ -204,8 +204,11 @@ def teardown(request):
 
         end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
 
+        #
         # We want to track rapid egress without flooding the system with each log message. So we look for
-        # this message to send to pubsub:
+        # this message to send to pubsub. Note that *each* instance of this AppEngine service is going to
+        # issue this message when it goes over the 10 GB thresholds.
+        #
         if end_gb > g.start_gb:
             logger.info("DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(curr_use_per_ip['day'],
                                                                                        g.proxy_ip_addr,
@@ -291,6 +294,22 @@ def load_cidr_defs(free_region):
             if prefix['scope'] == 'us-central1':
                 cidr_defs.append(ipaddress.IPv4Network(prefix['ipv4Prefix']))
     return cidr_defs
+
+#
+# Load in lists of allowed DICOMStores, and split them all into chunks
+#
+
+def load_store_list(list_string):
+    store_chunks = []
+    if list_string == "NONE":
+        return store_chunks
+    allowed = list_string.split(';')
+    for allow in allowed:
+        chunk_list = allow.split('/')
+        if len(chunk_list) != 4:
+            raise Exception("Bad store definition")
+        store_chunks.append(chunk_list)
+    return store_chunks
 
 #
 # Load in lists of CIDR defs for IPs we will allow or deny:
@@ -539,12 +558,26 @@ def root(version, project, location, remainder):
     #
 
     remainder_chunks = remainder.split('/')
-    for i in range(4):
-        if remainder_chunks[i] != CURRENT_STORE_CHUNKS[i]:
-            logger.info("request from {} has been dropped: incorrect store".format(client_ip))
-            resp = Response(status=404)
-            resp.headers = cors_headers
-            return resp
+    allowed = False
+    num_chunks = len(remainder_chunks)
+    if num_chunks >= 4:
+        for allowed_store in allowed_store_chunks:
+            store_match = True
+            for i in range(4):
+                if remainder_chunks[i] != allowed_store[i]:
+                    store_match = False
+                    break
+            if store_match:
+                allowed = True
+                break
+
+    if not allowed:
+        valid_chunks = 4 if num_chunks >= 4 else num_chunks
+        store_path = '/'.join(remainder_chunks[0:valid_chunks]) if valid_chunks > 0 else "No path"
+        logger.info("request from {} has been dropped: incorrect store: {}".format(client_ip, store_path))
+        resp = Response(status=404)
+        resp.headers = cors_headers
+        return resp
 
     #
     # Handle CORS:
@@ -724,6 +757,7 @@ local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
 restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
+allowed_store_chunks = load_store_list(CURRENT_STORES)
 hsts_preload_directive = "; preload" if HSTS_PRELOAD else ""
 hsts_header = 'max-age={}; includeSubDomains{}'.format(HSTS_AGE, hsts_preload_directive)
 
