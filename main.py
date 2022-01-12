@@ -544,7 +544,6 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
-    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
 
     if project != SUPPORTED_PROJECT:
         logger.info("request from {} has been dropped: unsupported project {}".format(client_ip, project))
@@ -558,13 +557,16 @@ def root(version, project, location, remainder):
     #
 
     if USAGE_DECORATION is not None:
-        if url.find(USAGE_DECORATION) != -1:
-            url = url.replace(USAGE_DECORATION, '')
+        if remainder.find(USAGE_DECORATION) != -1:
+            remainder = remainder.replace(USAGE_DECORATION, '')
         else:
             logger.info("request from {} has been dropped: no usage decoration {}".format(client_ip, project))
             resp = Response(status=404)
             resp.headers = cors_headers
             return resp
+
+    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
+
 
     #
     # We want to restrict the proxy to only serve content from our current DICOM store, and not older
