@@ -57,6 +57,7 @@ RESTRICT_LIST = settings['RESTRICT_LIST']
 RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 HSTS_AGE = int(settings['HSTS_AGE'])
 HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
+USAGE_DECORATION = settings['USAGE_DECORATION']
 
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
@@ -419,7 +420,6 @@ def quota_usage():
         "ip": client_ip,
         "bytes_used": 0,
         "fraction_used": 0.0,
-        "global_fraction_used": 0.0,
         "date": todays_date
     }
 
@@ -432,13 +432,14 @@ def quota_usage():
         usage_return["bytes_used"] = byte_count
         usage_return["fraction_used"] = float(byte_count)/float(MAX_PER_IP_PER_DAY)
 
-    if curr_use_global is not None:
-        last_global_usage = curr_use_global['day']
-        last_global_byte_count = curr_use_global['bytes']
-        if last_global_usage != todays_date:
-            last_global_byte_count = 0
-
-        usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
+    # Suppress sending out global data!
+    #if curr_use_global is not None:
+    #    last_global_usage = curr_use_global['day']
+    #    last_global_byte_count = curr_use_global['bytes']
+    #    if last_global_usage != todays_date:
+    #        last_global_byte_count = 0
+    #
+    #    usage_return["global_fraction_used"] = float(last_global_byte_count)/float(MAX_TOTAL_PER_DAY)
 
     as_json = json.dumps(usage_return)
     logger.info("[STATUS] Received usage request: {}".format(as_json))
@@ -543,13 +544,29 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
-    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
 
     if project != SUPPORTED_PROJECT:
         logger.info("request from {} has been dropped: unsupported project {}".format(client_ip, project))
         resp = Response(status=404)
         resp.headers = cors_headers
         return resp
+
+    #
+    # We want to dress up the URL used by the viewers to include a usage restriction statement. If provided, this
+    # must be present in the URL, and gets stripped out:
+    #
+
+    if USAGE_DECORATION is not None:
+        if remainder.find(USAGE_DECORATION) != -1:
+            remainder = remainder.replace(USAGE_DECORATION, '')
+        else:
+            logger.info("request from {} has been dropped: no usage decoration {}".format(client_ip, project))
+            resp = Response(status=404)
+            resp.headers = cors_headers
+            return resp
+
+    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
+
 
     #
     # We want to restrict the proxy to only serve content from our current DICOM store, and not older
