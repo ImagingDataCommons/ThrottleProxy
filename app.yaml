@@ -1,6 +1,6 @@
 runtime: python37
 
-instance_class: F2
+instance_class: F4
 
 inbound_services:
   - warmup
@@ -8,6 +8,11 @@ inbound_services:
 env_variables:
   GOOGLE_APPLICATION_CREDENTIALS: ./privatekey.json
   IDC_THROTTLE_PROXY_CONFIG: ./config.txt
+
+#
+# This is how you wiggle worker count (here it is two):
+#
+#entrypoint: gunicorn -b :8080 -w 2 main:app
 
 service: proxy
 
@@ -19,14 +24,15 @@ handlers:
     script: auto
 
 automatic_scaling:
-  min_idle_instances: automatic
-  max_idle_instances: automatic
+  min_idle_instances: 4
+  max_idle_instances: 15
   min_pending_latency: 0.030s
-  max_pending_latency: automatic
-  max_concurrent_requests: 20
+  max_pending_latency: 15s
+  max_concurrent_requests: 50
   target_cpu_utilization: 0.65
-  min_instances: 3
-  max_instances: 100
+  target_throughput_utilization: 0.5
+  min_instances: 4
+  max_instances: 30
 
 vpc_access_connector:
   name: 'projects/<project-id>/locations/<location>/connectors/redis-connector'
