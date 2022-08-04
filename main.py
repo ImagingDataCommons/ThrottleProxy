@@ -63,6 +63,7 @@ GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
+FIX_COUNT = 3
 
 app = Flask(__name__)
 
@@ -71,7 +72,7 @@ app = Flask(__name__)
 # load balancer. This helps us do that cleanly:
 #
 
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=FIX_COUNT)
 
 #
 # Logging:
