@@ -58,6 +58,7 @@ HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
 USAGE_DECORATION = settings['USAGE_DECORATION']
 CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
 PATH_TAIL = settings['PATH_TAIL']
+ALLOWED_LEGACY = settings['ALLOWED_LEGACY']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
@@ -430,19 +431,30 @@ def quota_usage():
 
     return Response(as_json, mimetype='application/json', headers=cors_headers)
 
+
 #
-# Needs to match on e.g. this:
-# https://idc-sandbox-002.appspot.com/v1beta1/projects/chc-tcia/locations/us-central1/datasets/tcga-gbm/dicomStores/tcga-gbm/dicomWeb/studies/1.3.6.1.4.1.14519.5.2.1.4591.4001.292494376567537333391334418593/series
+# During the transition to the new request URL approach, we support the old URL pending the upgrade to the viewers.
+# Note this assumes we have used the USAGE_DECORATION
 #
 
-# Old URL:
-# https://dev-proxy.canceridc.dev/v1/projects/canceridc-data/locations/us/datasets/idc/dicomStores/v10-viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp/dicomWeb'''
-# New URL:
-# https://dev-proxy.canceridc.dev/dicomWeb/viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp'''
+@app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY, USAGE_DECORATION), methods=["GET", "OPTIONS"])
+def legacy_shim(remainder):
+    logger.info("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
+    return common_core(request, '{}{}'.format(USAGE_DECORATION, remainder))
+
+#
+# The new main handler, which uses an internally configured resource path:
+#
 
 @app.route('/current/<path:remainder>', methods=["GET", "OPTIONS"])
-#@app.route('/<version>/projects/<project>/locations/<location>/datasets/<path:remainder>', methods=["GET", "OPTIONS"])
 def root(remainder):
+    return common_core(request, remainder)
+
+#
+# Common core, used by both
+#
+
+def common_core(request, remainder):
 
     client_ip = request.remote_addr
 
