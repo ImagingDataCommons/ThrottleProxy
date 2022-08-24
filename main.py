@@ -440,7 +440,7 @@ def quota_usage():
 # New URL:
 # https://dev-proxy.canceridc.dev/dicomWeb/viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp'''
 
-@app.route('/proxy/<path:remainder>', methods=["GET", "OPTIONS"])
+@app.route('/current/<path:remainder>', methods=["GET", "OPTIONS"])
 #@app.route('/<version>/projects/<project>/locations/<location>/datasets/<path:remainder>', methods=["GET", "OPTIONS"])
 def root(remainder):
 
@@ -545,15 +545,17 @@ def root(remainder):
     # to call the Healthcare API.
     #
 
+    logger.info("Remainder step 1: {}".format(remainder))
     if USAGE_DECORATION is not None:
         if remainder.find(USAGE_DECORATION) != -1:
             remainder = remainder.replace(USAGE_DECORATION, '')
         else:
-            logger.info("request from {} has been dropped: no required usage decoration".format(client_ip))
+            logger.info("request from {} has been dropped: no required usage decoration in {}".format(client_ip, remainder))
             resp = Response(status=404)
             resp.headers = cors_headers
             return resp
 
+    logger.info("Remainder step 2: {}".format(remainder))
     #
     # Ditch the expected and required path tail from the remainder:
     #
@@ -561,11 +563,12 @@ def root(remainder):
     if remainder.find(PATH_TAIL) != -1:
         remainder = remainder.replace(PATH_TAIL, '')
     else:
-        logger.info("request from {} has been dropped: no required path tail".format(client_ip))
+        logger.info("request from {} has been dropped: no required path tail in {}".format(client_ip, remainder))
         resp = Response(status=404)
         resp.headers = cors_headers
         return resp
 
+    logger.info("Remainder step 3: {}".format(remainder))
     url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
     logger.info("Reformatted final URL: {}".format(url))
 
