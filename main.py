@@ -58,7 +58,7 @@ HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
 USAGE_DECORATION = settings['USAGE_DECORATION']
 CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
 PATH_TAIL = settings['PATH_TAIL']
-ALLOWED_LEGACY = settings['ALLOWED_LEGACY']
+ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
@@ -437,7 +437,7 @@ def quota_usage():
 # Note this assumes we have used the USAGE_DECORATION
 #
 
-@app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY, USAGE_DECORATION), methods=["GET", "OPTIONS"])
+@app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY_PREFIX, USAGE_DECORATION), methods=["GET", "OPTIONS"])
 def legacy_shim(remainder):
     logger.info("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
     return common_core(request, '{}{}'.format(USAGE_DECORATION, remainder))
