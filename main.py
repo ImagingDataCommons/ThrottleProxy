@@ -439,7 +439,7 @@ def quota_usage():
 
 @app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY_PREFIX, USAGE_DECORATION), methods=["GET", "OPTIONS"])
 def legacy_shim(remainder):
-    logger.info("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
+    logger.warning("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
     return common_core(request, '{}{}'.format(USAGE_DECORATION, remainder))
 
 #
@@ -546,18 +546,12 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
- #@app.route('/<version>/projects/<project>/locations/<location>/datasets/<path:remainder>', methods=["GET", "OPTIONS"])
-    # '''STORE_ROOT=https://dev-proxy.canceridc.dev/v1/projects/canceridc-data/locations/us/datasets/idc/dicomStores/v10-viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp/dicomWeb'''
-
-    # SUPPORTED_PROJECT=canceridc-data
-
     #
     # We want to dress up the URL used by the viewers to include a usage restriction statement. If provided, this
     # MUST be present in the URL. Strip it out of the provided path, and use the rest of the path
     # to call the Healthcare API.
     #
 
-    logger.info("Remainder step 1: {}".format(remainder))
     if USAGE_DECORATION is not None:
         if remainder.find(USAGE_DECORATION) != -1:
             remainder = remainder.replace(USAGE_DECORATION, '')
@@ -567,7 +561,6 @@ def common_core(request, remainder):
             resp.headers = cors_headers
             return resp
 
-    logger.info("Remainder step 2: {}".format(remainder))
     #
     # Ditch the expected and required path tail from the remainder:
     #
@@ -580,9 +573,7 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-    logger.info("Remainder step 3: {}".format(remainder))
     url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
-    logger.info("Reformatted final URL: {}".format(url))
 
     #
     # Handle CORS:
