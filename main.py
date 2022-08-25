@@ -40,7 +40,6 @@ REDIS_PORT = int(settings['REDIS_PORT'])
 DISABLE = (settings['DISABLE'].lower() == 'true')
 CHUNK_SIZE = int(settings['CHUNK_SIZE'])
 GOOGLE_HC_URL = settings['GOOGLE_HC_URL']
-SUPPORTED_PROJECT = settings['SUPPORTED_PROJECT']
 ALLOWED_HOST = settings['ALLOWED_HOST']
 DEGRADATION_LEVEL_ONE = int(settings['DEGRADATION_LEVEL_ONE'])
 DEGRADATION_LEVEL_ONE_PAUSE = float(settings['DEGRADATION_LEVEL_ONE_PAUSE'])
@@ -52,13 +51,14 @@ FREE_CLOUD_REGION = settings['FREE_CLOUD_REGION']
 ALLOWED_LIST = settings['ALLOWED_LIST']
 DENY_LIST = settings['DENY_LIST']
 UA_SECRET = settings['UA_SECRET']
-CURRENT_STORES = settings['CURRENT_STORES']
 RESTRICT_LIST = settings['RESTRICT_LIST']
 RESTRICT_MULTIPLIER = float(settings['RESTRICT_MULTIPLIER'])
 HSTS_AGE = int(settings['HSTS_AGE'])
 HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
 USAGE_DECORATION = settings['USAGE_DECORATION']
-
+CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
+PATH_TAIL = settings['PATH_TAIL']
+ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
 BACKOFF_COUNT = 3
@@ -298,22 +298,6 @@ def load_cidr_defs(free_region):
     return cidr_defs
 
 #
-# Load in lists of allowed DICOMStores, and split them all into chunks
-#
-
-def load_store_list(list_string):
-    store_chunks = []
-    if list_string == "NONE":
-        return store_chunks
-    allowed = list_string.split(';')
-    for allow in allowed:
-        chunk_list = allow.split('/')
-        if len(chunk_list) != 4:
-            raise Exception("Bad store definition")
-        store_chunks.append(chunk_list)
-    return store_chunks
-
-#
 # Load in lists of CIDR defs for IPs we will allow or deny:
 #
 
@@ -447,13 +431,30 @@ def quota_usage():
 
     return Response(as_json, mimetype='application/json', headers=cors_headers)
 
+
 #
-# Needs to match on e.g. this:
-# https://idc-sandbox-002.appspot.com/v1beta1/projects/chc-tcia/locations/us-central1/datasets/tcga-gbm/dicomStores/tcga-gbm/dicomWeb/studies/1.3.6.1.4.1.14519.5.2.1.4591.4001.292494376567537333391334418593/series
+# During the transition to the new request URL approach, we support the old URL pending the upgrade to the viewers.
+# Note this assumes we have used the USAGE_DECORATION
 #
 
-@app.route('/<version>/projects/<project>/locations/<location>/datasets/<path:remainder>', methods=["GET", "OPTIONS"])
-def root(version, project, location, remainder):
+@app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY_PREFIX, USAGE_DECORATION), methods=["GET", "OPTIONS"])
+def legacy_shim(remainder):
+    logger.warning("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
+    return common_core(request, '{}{}'.format(USAGE_DECORATION, remainder))
+
+#
+# The new main handler, which uses an internally configured resource path:
+#
+
+@app.route('/current/<path:remainder>', methods=["GET", "OPTIONS"])
+def root(remainder):
+    return common_core(request, remainder)
+
+#
+# Common core, used by both
+#
+
+def common_core(request, remainder):
 
     client_ip = request.remote_addr
 
@@ -545,57 +546,34 @@ def root(version, project, location, remainder):
         resp.headers = cors_headers
         return resp
 
-
-    if project != SUPPORTED_PROJECT:
-        logger.info("request from {} has been dropped: unsupported project {}".format(client_ip, project))
-        resp = Response(status=404)
-        resp.headers = cors_headers
-        return resp
-
     #
     # We want to dress up the URL used by the viewers to include a usage restriction statement. If provided, this
-    # must be present in the URL, and gets stripped out:
+    # MUST be present in the URL. Strip it out of the provided path, and use the rest of the path
+    # to call the Healthcare API.
     #
 
     if USAGE_DECORATION is not None:
         if remainder.find(USAGE_DECORATION) != -1:
             remainder = remainder.replace(USAGE_DECORATION, '')
         else:
-            logger.info("request from {} has been dropped: no usage decoration {}".format(client_ip, project))
+            logger.info("request from {} has been dropped: no required usage decoration in {}".format(client_ip, remainder))
             resp = Response(status=404)
             resp.headers = cors_headers
             return resp
 
-    url = "/{}/projects/{}/locations/{}/datasets/{}".format(version, project, location, remainder)
-
-
     #
-    # We want to restrict the proxy to only serve content from our current DICOM store, and not older
-    # versions. This means the remainder must match what we specify
-    # form: idc/dicomStores/v5/dicomWeb',
+    # Ditch the expected and required path tail from the remainder:
     #
 
-    remainder_chunks = remainder.split('/')
-    allowed = False
-    num_chunks = len(remainder_chunks)
-    if num_chunks >= 4:
-        for allowed_store in allowed_store_chunks:
-            store_match = True
-            for i in range(4):
-                if remainder_chunks[i] != allowed_store[i]:
-                    store_match = False
-                    break
-            if store_match:
-                allowed = True
-                break
-
-    if not allowed:
-        valid_chunks = 4 if num_chunks >= 4 else num_chunks
-        store_path = '/'.join(remainder_chunks[0:valid_chunks]) if valid_chunks > 0 else "No path"
-        logger.info("request from {} has been dropped: incorrect store: {}".format(client_ip, store_path))
+    if remainder.find(PATH_TAIL) != -1:
+        remainder = remainder.replace(PATH_TAIL, '')
+    else:
+        logger.info("request from {} has been dropped: no required path tail in {}".format(client_ip, remainder))
         resp = Response(status=404)
         resp.headers = cors_headers
         return resp
+
+    url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
 
     #
     # Handle CORS:
@@ -732,6 +710,21 @@ def root(version, project, location, remainder):
                                headers={key: value for (key, value) in request.headers if key != 'Host'},
                                cookies=request.cookies,
                                allow_redirects=False)
+
+        #
+        # We have seen Google Healthcare API return 429s when the Healthcare API exceeds their per-minute throughput
+        # quota. This produces an ambiguous situation for the viewer, since it interprets 429s as *our* daily quota.
+        # We resolve this by mapping a Google Healthcare API 429 to a 500 (it is an internal error in this case,
+        # kinda...). Viewer should be designed to backoff and retry with a 500, since that also happens when
+        # App Engine spoolups are falling behind...
+        #
+
+        if req.status_code == 429:
+            logger.warning("Google returned a 429, mapping to 500, for IP: {}".format(client_ip))
+            resp = Response(status=500)
+            resp.headers = cors_headers
+            return resp
+
         #
         # NO! excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
         #                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
@@ -775,7 +768,6 @@ local_cidr_defs = load_cidr_defs(FREE_CLOUD_REGION)
 allow_cidr_defs = load_cidr_list(ALLOWED_LIST)
 deny_cidr_defs = load_cidr_list(DENY_LIST)
 restrict_cidr_defs = load_cidr_list(RESTRICT_LIST)
-allowed_store_chunks = load_store_list(CURRENT_STORES)
 hsts_preload_directive = "; preload" if HSTS_PRELOAD else ""
 hsts_header = 'max-age={}; includeSubDomains{}'.format(HSTS_AGE, hsts_preload_directive)
 
