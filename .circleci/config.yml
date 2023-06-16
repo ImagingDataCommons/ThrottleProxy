@@ -1,5 +1,5 @@
 version: 2.1
-### Force config
+## Force config
 commands:
   deployment_setup:
     steps:
@@ -99,7 +99,7 @@ jobs:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     working_directory: ~/ThrottleProxy
     docker:
-      - image: circleci/python:3.7.0-stretch
+      - image: cimg/python:3.8
     steps:
       - checkout
       - run:
@@ -135,7 +135,7 @@ jobs:
     environment:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     docker:
-      - image: circleci/python:3.7.0-stretch
+      - image: cimg/python:3.8
     working_directory: ~/ThrottleProxy
     steps:
       - restore_cache:
