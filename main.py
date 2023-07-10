@@ -748,6 +748,16 @@ def common_core(request, remainder):
         if cors_headers:
             for item in cors_headers.items():
                 headers.append(item)
+        '''
+        Data is sent in a series of chunks. The Content-Length header is omitted in this 
+        case and at the beginning of each chunk you need to add the length of the current 
+        chunk in hexadecimal format, followed by '\r\n' and then the chunk itself, 
+        followed by another '\r\n'. The terminating chunk is a regular chunk, with the 
+        exception that its length is zero. It is followed by the trailer, which consists 
+        of a (possibly empty) sequence of header fields.
+        
+        Transfer Encoding: chunked
+        '''
 
         #logger.info("Response headers: {}".format(str(headers)))
         return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
