@@ -690,6 +690,12 @@ def common_core(request, remainder):
             g.start_gb = start_gb
 
         #
+        # Both free and quota use this:
+        #
+
+        g.proxy_byte_count = 0
+
+        #
         # It is useful to test how well the OHIF viewer handles 500 return codes. 500 returns are not uncommon when
         # App Engine needs to quickly spool up new instances when a big load appears out of the blue. So we can
         # configure the proxy to return 500s at some specified random return rate
@@ -702,12 +708,6 @@ def common_core(request, remainder):
                 resp = Response(status=500)
                 resp.headers = cors_headers
                 return resp
-
-        #
-        # Both free and quota use this:
-        #
-
-        g.proxy_byte_count = 0
 
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
