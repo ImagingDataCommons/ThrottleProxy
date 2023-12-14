@@ -60,7 +60,8 @@ CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
 PATH_TAIL = settings['PATH_TAIL']
 ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
-CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
+CLOUD_IP_URL = 'https://www.gstatic.com/ipranges/cloud.json'
+RAND_500_RATE = float(settings['RAND_500_RATE'])
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
@@ -686,6 +687,20 @@ def common_core(request, remainder):
             g.proxy_ip_addr = client_ip
             g.proxy_date = todays_date
             g.start_gb = start_gb
+
+        #
+        # It is useful to test how well the OHIF viewer handles 500 return codes. 500 returns are not uncommon when
+        # App Engine needs to quickly spool up new instances when a big load appears out of the blue. So we can
+        # configure the proxy to return 500s at some specified random return rate
+        #
+
+        if RAND_500_RATE > 0.0:
+            rand_num = random()
+            if rand_num <= RAND_500_RATE:
+                logger.warning("Returning a test 500 (rate {}, val {}) to: {}".format(RAND_500_RATE, rand_num, client_ip))
+                resp = Response(status=500)
+                resp.headers = cors_headers
+                return resp
 
         #
         # Both free and quota use this:
