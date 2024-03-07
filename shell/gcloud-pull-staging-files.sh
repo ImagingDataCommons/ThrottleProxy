@@ -8,7 +8,7 @@ gsutil cp "gs://${DEPLOYMENT_BUCKET}/${PROXY_APP_YAML}" ./app.yaml
 grep '^service:' ./app.yaml
 
 # Proxy runtime key
-gsutil cp "gs://${DEPLOYMENT_BUCKET}/${PROXY_RUNTIME_SA_KEY}" ./privatekey.json
+#gsutil cp "gs://${DEPLOYMENT_BUCKET}/${PROXY_RUNTIME_SA_KEY}" ./privatekey.json
 
 # Configuration file (env vars not used in proxy)
 gsutil cp "gs://${DEPLOYMENT_BUCKET}/${IDC_PROXY_CONFIG}" ./config.txt
