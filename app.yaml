@@ -6,7 +6,6 @@ inbound_services:
   - warmup
 
 env_variables:
-  GOOGLE_APPLICATION_CREDENTIALS: ./privatekey.json
   IDC_THROTTLE_PROXY_CONFIG: ./config.txt
 
 service: proxy
