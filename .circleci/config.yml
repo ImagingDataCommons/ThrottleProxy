@@ -151,7 +151,7 @@ jobs:
             # Google docs say that if you want App Engine Standard to talk to redis, you are
             # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
             # MUST use the gcloud beta:
-            sudo -E gcloud beta app deploy --verbosity=debug ./app.yaml --quiet
+            sudo -E gcloud beta app deploy --verbosity=debug ./app.yaml --service-account=${PROXY_RUNTIME_SA_NAME} --quiet
             sudo -E /bin/sh ./shell/post-deployment.sh
 
 workflows:
