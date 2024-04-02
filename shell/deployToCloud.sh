@@ -3,13 +3,12 @@
 #
 # Script for deployment from the desktop
 
-trap 'rm ./privatekey.json; mv hold_config.txt config.txt' EXIT
+trap 'mv hold_config.txt config.txt' EXIT
 
 source ./setEnvVars.sh
 cd ..
 mv config.txt hold_config.txt
 gsutil cp "${PROXY_CONFIG_GCS_PATH}" ./config.txt
-gsutil cp "${PROXY_SA_KEY_GCS_PATH}" ./privatekey.json
 
 GOT_IT=`grep ${PROXY_SERVICE_NAME} app.yaml`
 
@@ -26,7 +25,7 @@ cat app.yaml.orig | sed 's/---project_name---/'${PROJECT}'/' > app.yaml
 # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
 # MUST use the gclould beta:
 #
-gcloud beta app deploy --verbosity=debug ./app.yaml --quiet --project=${PROJECT}
+gcloud beta app deploy --verbosity=debug ./app.yaml --quiet  --service-account=${PROXY_RUNTIME_SA_NAME} --project=${PROJECT}
 
 if [ -z "${GOT_IT}" ]; then
   mv app.yaml.orig app.yaml

@@ -27,6 +27,7 @@ from google.auth.transport.requests import AuthorizedSession
 import datetime
 import redis
 import json
+from random import random
 from urllib.parse import urlparse
 
 
@@ -60,7 +61,8 @@ CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
 PATH_TAIL = settings['PATH_TAIL']
 ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
-CLOUD_IP_URL='https://www.gstatic.com/ipranges/cloud.json'
+CLOUD_IP_URL = 'https://www.gstatic.com/ipranges/cloud.json'
+RAND_500_RATE = float(settings['RAND_500_RATE'])
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
@@ -394,7 +396,7 @@ def quota_usage():
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -582,7 +584,7 @@ def common_core(request, remainder):
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
-        logger.info("returning OPTION headers {}".format(str(cors_headers)))
+        #logger.info("returning OPTION headers {}".format(str(cors_headers)))
         return resp
 
     #
@@ -692,6 +694,20 @@ def common_core(request, remainder):
         #
 
         g.proxy_byte_count = 0
+
+        #
+        # It is useful to test how well the OHIF viewer handles 500 return codes. 500 returns are not uncommon when
+        # App Engine needs to quickly spool up new instances when a big load appears out of the blue. So we can
+        # configure the proxy to return 500s at some specified random return rate
+        #
+
+        if RAND_500_RATE > 0.0:
+            rand_num = random()
+            if rand_num <= RAND_500_RATE:
+                logger.warning("Returning a test 500 (rate {}, val {}) to: {}".format(RAND_500_RATE, rand_num, client_ip))
+                resp = Response(status=500)
+                resp.headers = cors_headers
+                return resp
 
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
