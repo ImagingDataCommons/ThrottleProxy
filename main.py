@@ -602,6 +602,13 @@ def common_core(request, remainder):
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
+        #
+        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
+        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
+        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
+        #
+
+        need_to_rewrite = url.endswith("/metadata")
 
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
@@ -722,7 +729,9 @@ def common_core(request, remainder):
 
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
-        req = auth_session.request(request.method, req_url, stream=True,
+
+        stream_val = not need_to_rewrite
+        req = auth_session.request(request.method, req_url, stream=stream_val,
                                headers={key: value for (key, value) in request.headers if key != 'Host'},
                                cookies=request.cookies,
                                allow_redirects=False)
@@ -765,8 +774,21 @@ def common_core(request, remainder):
             for item in cors_headers.items():
                 headers.append(item)
 
-        #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
+        if need_to_rewrite:
+            try:
+                json_metadata = req.json()
+                for key, value in json_metadata.items():
+                    print(key)
+            except requests.JSONDecodeError as e:
+                logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
+                logging.exception(e)
+                resp = Response(status=500)
+                resp.headers = cors_headers
+                return resp
+            return Response(req.content, headers=headers, status=req.status_code)
+        else:
+            #logger.info("Response headers: {}".format(str(headers)))
+            return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
