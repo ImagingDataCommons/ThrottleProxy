@@ -780,6 +780,8 @@ def common_core(request, remainder):
                 print("***************")
                 print(json_metadata)
                 print("***************")
+                print(req.headers)
+                print("***************")
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
                 logging.exception(e)
