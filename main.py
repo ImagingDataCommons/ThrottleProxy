@@ -777,7 +777,7 @@ def common_core(request, remainder):
         if need_to_rewrite:
             try:
                 json_metadata = req.json()
-                for key, value in json_metadata.items():
+                for key in json_metadata:
                     print(key)
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
