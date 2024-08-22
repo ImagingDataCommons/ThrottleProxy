@@ -783,6 +783,9 @@ def common_core(request, remainder):
                 json_metadata = req.json()
                 print("***************")
                 print(json_metadata)
+                for items in json_metadata:
+                    for key, item in items:
+                        print(key)
                 print("***************")
                 print(req.headers)
                 print("***************")
