@@ -784,6 +784,10 @@ def common_core(request, remainder):
                 backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 proxy_url = "https://{}/current/{}{}".format(ALLOWED_HOST, USAGE_DECORATION, PATH_TAIL)
 
+                orig_text = req.text
+                patched_text = orig_text.replace(backend_url, proxy_url)
+                json_metadata = json.loads(patched_text)
+                '''
                 json_metadata = req.json()
                 print("***************")
                 print(type(json_metadata))
@@ -799,6 +803,7 @@ def common_core(request, remainder):
                                             print("Bulk metadata was {} now {}".format(old_val, value["BulkDataURI"]))
                 elif type(json_metadata) is dict:
                     print("Unexpected non-list JSON!")
+                '''
                 print("***************")
                 print(req.headers)
                 print("***************")
