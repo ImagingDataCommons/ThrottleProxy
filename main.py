@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 
-from flask import Flask, abort, Response, stream_with_context, request, g, jsonify
+from flask import Flask, abort, Response, stream_with_context, request, g, jsonify, make_response
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
@@ -759,7 +759,11 @@ def common_core(request, remainder):
         # zipped content before sending it out. That is fixed, so sending the headers along:
         #
         #excluded_headers = ['transfer-encoding', 'connection',
-        excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+
+        if need_to_rewrite:
+            excluded_headers = ['content-encoding', 'transfer-encoding', 'connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+        else:
+            excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
         #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
@@ -788,7 +792,10 @@ def common_core(request, remainder):
                 resp = Response(status=500)
                 resp.headers = cors_headers
                 return resp
-            return Response(req.content, headers=headers, status=req.status_code)
+            mod_dict = json_metadata
+            res = make_response(json.dumps(mod_dict), status=req.status_code)
+            res.headers = headers
+            return res
         else:
             #logger.info("Response headers: {}".format(str(headers)))
             return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
