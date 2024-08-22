@@ -780,13 +780,25 @@ def common_core(request, remainder):
 
         if need_to_rewrite:
             try:
+
+                backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
+                proxy_url = "https://{}/current/{}{}".format(ALLOWED_HOST, USAGE_DECORATION, PATH_TAIL)
+
                 json_metadata = req.json()
                 print("***************")
                 print(type(json_metadata))
-                for items in json_metadata:
-                    print(type(items))
-                    #for val in items:
-                    #    print(val)
+                if type(json_metadata) is list:
+                    for item in json_metadata:
+                        if type(item) is dict:
+                            for key, value in item.items():
+                                if type(value) is dict:
+                                    for key1, value1 in value.items():
+                                        if key1 == "BulkDataURI":
+                                            old_val = value1["BulkDataURI"]
+                                            value1["BulkDataURI"] = old_val.replace(backend_url, proxy_url)
+                                            print("Bulk metadata was {} now {}".format(old_val, value1["BulkDataURI"]))
+                elif type(json_metadata) is dict:
+                    print("Unexpected non-list JSON!")
                 print("***************")
                 print(req.headers)
                 print("***************")
@@ -796,8 +808,7 @@ def common_core(request, remainder):
                 resp = Response(status=500)
                 resp.headers = cors_headers
                 return resp
-            mod_dict = json_metadata
-            res = make_response(json.dumps(mod_dict), req.status_code)
+            res = make_response(json.dumps(json_metadata), req.status_code)
             res.headers = headers
             return res
         else:
