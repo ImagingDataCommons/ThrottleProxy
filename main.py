@@ -794,9 +794,9 @@ def common_core(request, remainder):
                                 if type(value) is dict:
                                     for key1, value1 in value.items():
                                         if key1 == "BulkDataURI":
-                                            old_val = value1["BulkDataURI"]
-                                            value1["BulkDataURI"] = old_val.replace(backend_url, proxy_url)
-                                            print("Bulk metadata was {} now {}".format(old_val, value1["BulkDataURI"]))
+                                            old_val = value1
+                                            value["BulkDataURI"] = old_val.replace(backend_url, proxy_url)
+                                            print("Bulk metadata was {} now {}".format(old_val, value["BulkDataURI"]))
                 elif type(json_metadata) is dict:
                     print("Unexpected non-list JSON!")
                 print("***************")
