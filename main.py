@@ -793,7 +793,7 @@ def common_core(request, remainder):
                 resp.headers = cors_headers
                 return resp
             mod_dict = json_metadata
-            res = make_response(json.dumps(mod_dict), status=req.status_code)
+            res = make_response(json.dumps(mod_dict), req.status_code)
             res.headers = headers
             return res
         else:
