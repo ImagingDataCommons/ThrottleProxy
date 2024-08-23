@@ -751,6 +751,17 @@ def common_core(request, remainder):
             return resp
 
         #
+        # If the Google backend has a problem and returns a 500, we want to know that *we* are not responsible for
+        # the problem:
+        #
+
+        if req.status_code >= 500:
+            logger.warning("ERROR: Google returned a 500 that we are passing through")
+            resp = Response(status=req.status_code)
+            resp.headers = cors_headers
+            return resp
+
+        #
         # NO! excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection',
         #                         'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
         # In first iteration, included 'content-encoding' and 'content-length' in the excluded headers, since "Tried to drop
