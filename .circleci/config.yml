@@ -99,7 +99,7 @@ jobs:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     working_directory: ~/ThrottleProxy
     docker:
-      - image: cimg/python:3.8
+      - image: cimg/python:3.9
     steps:
       - checkout
       - run:
@@ -135,7 +135,7 @@ jobs:
     environment:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     docker:
-      - image: cimg/python:3.8
+      - image: cimg/python:3.9
     working_directory: ~/ThrottleProxy
     steps:
       - restore_cache:
