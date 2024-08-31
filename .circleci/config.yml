@@ -48,7 +48,7 @@ commands:
               PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_TEST}
               BUCKET=${DEPLOYMENT_BUCKET_IDC_TEST}
               echo "Using test project and related deployment SA and bucket."
-            elif [[ ${TIER} == "DEV" || ${TIER} == "BULK-DEV"]]; then
+            elif [[ ${TIER} == "DEV" || ${TIER} == "BULK-DEV" ]]; then
               echo "Using development/default project and related deployment SA and bucket."
               if [[ ${TIER} == "BULK-DEV" ]]; then
                 CONFIG=bulk_${CONFIG}
