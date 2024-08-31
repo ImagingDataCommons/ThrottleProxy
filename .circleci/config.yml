@@ -160,8 +160,12 @@ jobs:
             #
             # The bulk proxies require gunicorn:
             #
+            echo "TIER IS ${TIER}"
+            ls -las *.txt
             if [[ ${TIER} =~ BULK_.* ]]; then
+              echo "Updating requirements"
               mv bulk_requirements.txt requirements.txt
+              ls -las *.txt
             fi    
             # Google docs say that if you want App Engine Standard to talk to redis, you are
             # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
