@@ -164,7 +164,7 @@ jobs:
             ls -las *.txt
             if [[ ${TIER} =~ BULK-.* ]]; then
               echo "Updating requirements"
-              mv bulk_requirements.txt requirements.txt
+              sudo mv -f bulk_requirements.txt requirements.txt
               ls -las *.txt
             fi    
             # Google docs say that if you want App Engine Standard to talk to redis, you are
