@@ -68,6 +68,7 @@ IS_BULK = (settings['IS_BULK'].lower() == 'true')
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
+BULK_LOG_TAG = "(BULK) " if IS_BULK else ""
 
 app = Flask(__name__)
 
@@ -204,9 +205,9 @@ def teardown(request):
         pre_millis = int(round(time.time() * 1000))
         curr_use_per_ip, curr_use_global = redis_transaction_wrapper()
         post_millis = int(round(time.time() * 1000))
-        logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
+        logger.info("{}DAILY USAGE ON {} FOR IP {} is now {} bytes".format(BULK_LOG_TAG, curr_use_per_ip['day'],
                                                                          g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
-        logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
+        logger.info("{}DAILY GLOBAL USAGE ON {} is now {} bytes".format(BULK_LOG_TAG, curr_use_global['day'], curr_use_global['bytes'] ))
 
         end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
 
@@ -216,13 +217,13 @@ def teardown(request):
         # issue this message when it goes over the 10 GB thresholds.
         #
         if end_gb > g.start_gb:
-            logger.info("DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(curr_use_per_ip['day'],
+            logger.info("{}DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(BULK_LOG_TAG, curr_use_per_ip['day'],
                                                                                        g.proxy_ip_addr,
                                                                                        curr_use_per_ip['bytes'] ))
 
-        logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
-        logger.info("Chunk size was {}".format(CHUNK_SIZE))
-        logger.info("reported bytes {}".format(g.proxy_byte_count))
+        logger.info("{}Transaction length ms: {}".format(BULK_LOG_TAG, str(post_millis - pre_millis)))
+        logger.info("{}Chunk size was {}".format(BULK_LOG_TAG, CHUNK_SIZE))
+        logger.info("{}reported bytes {}".format(BULK_LOG_TAG, g.proxy_byte_count))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -598,7 +599,7 @@ def common_core(request, remainder):
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-        logger.info("[STATUS] Received proxy request: {}".format(url))
+        logger.info("[STATUS] {}Received proxy request: {}".format(BULK_LOG_TAG, url))
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
         #logger.info("Remote IP %s" % client_ip)
@@ -647,7 +648,7 @@ def common_core(request, remainder):
             curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
             curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
-            logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+            logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
 
             # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -661,7 +662,7 @@ def common_core(request, remainder):
                     byte_count = 0
 
                 if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
-                    logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
+                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, byte_count, client_ip, todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
                     return resp
@@ -680,7 +681,7 @@ def common_core(request, remainder):
 
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
-                    logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
+                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(BULK_LOG_TAG, client_ip,
                                                                                                                       last_global_byte_count,
                                                                                                                       todays_date))
                     resp = Response(status=429)
@@ -747,7 +748,7 @@ def common_core(request, remainder):
         #
 
         if req.status_code == 429:
-            logger.warning("Google returned a 429, mapping to 500, for IP: {}".format(client_ip))
+            logger.warning("{}Google returned a 429, mapping to 500, for IP: {}".format(BULK_LOG_TAG, client_ip))
             resp = Response(status=500)
             resp.headers = cors_headers
             return resp
@@ -795,19 +796,21 @@ def common_core(request, remainder):
             try:
                 backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
-
-                patched_text = req.text.replace(backend_url, proxy_url)
+                if backend_url in req.text:
+                    patched_text = req.text.replace(backend_url, proxy_url)
+                    logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
+                else:
+                    patched_text = req.text
                 json_metadata = json.loads(patched_text)
-                print("***************")
-                print(req.headers)
-                print("***************")
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
                 logging.exception(e)
                 resp = Response(status=500)
                 resp.headers = cors_headers
                 return resp
-            res = make_response(json.dumps(json_metadata), req.status_code)
+            resp_as_json = json.dumps(json_metadata)
+            g.proxy_byte_count += len(resp_as_json)
+            res = make_response(resp_as_json, req.status_code)
             res.headers = headers
             return res
         else:
