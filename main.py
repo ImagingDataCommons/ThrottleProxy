@@ -63,6 +63,8 @@ ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL = 'https://www.gstatic.com/ipranges/cloud.json'
 RAND_500_RATE = float(settings['RAND_500_RATE'])
+BULK_PATH_PREFIX = settings['BULK_PATH_PREFIX']
+IS_BULK = (settings['IS_BULK'].lower() == 'true')
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
@@ -448,7 +450,7 @@ def legacy_shim(remainder):
 # The new main handler, which uses an internally configured resource path:
 #
 
-@app.route('/current/<path:remainder>', methods=["GET", "OPTIONS"])
+@app.route('{}/current/<path:remainder>'.format("/{}".format(BULK_PATH_PREFIX) if IS_BULK else ''), methods=["GET", "OPTIONS"])
 def root(remainder):
     return common_core(request, remainder)
 
@@ -791,9 +793,8 @@ def common_core(request, remainder):
 
         if need_to_rewrite:
             try:
-
                 backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
-                proxy_url = "https://{}/current/{}{}".format(ALLOWED_HOST, USAGE_DECORATION, PATH_TAIL)
+                proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
 
                 patched_text = req.text.replace(backend_url, proxy_url)
                 json_metadata = json.loads(patched_text)

@@ -9,6 +9,10 @@ commands:
             TIER=DEV
             if [[ ${CIRCLE_BRANCH} =~ idc-proxy-(prod|uat|test).* ]]; then
               TIER=$(awk -F- '{print toupper($3)}' \<<< ${CIRCLE_BRANCH})
+            elif [[ ${CIRCLE_BRANCH} =~ idc-proxy-bulk-(prod|test|dev) ]]; then
+              TIER=$(awk -F- '{print "BULK-" toupper($4)}' \<<< ${CIRCLE_BRANCH})
+            else
+              echo "Saw dev tier branch."
             fi
             echo "export TIER=${TIER}" >> $BASH_ENV
             echo "Tier was identified as ${TIER} for branch ${CIRCLE_BRANCH}"
@@ -25,6 +29,7 @@ commands:
             CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_DEV}
             PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_DEV}
             BUCKET=${DEPLOYMENT_BUCKET_IDC_DEV}
+            CONFIG=proxy_deployment_config.txt
             if [[ ${TIER} == "PROD" ]]; then
               KEY=${DEPLOYMENT_KEY_IDC_PROD}
               CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_PROD}
@@ -43,8 +48,11 @@ commands:
               PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_TEST}
               BUCKET=${DEPLOYMENT_BUCKET_IDC_TEST}
               echo "Using test project and related deployment SA and bucket."
-            elif [[ ${TIER} == "DEV" ]]; then
+            elif [[ ${TIER} == "DEV" || ${TIER} == "BULK-DEV" ]]; then
               echo "Using development/default project and related deployment SA and bucket."
+              if [[ ${TIER} == "BULK-DEV" ]]; then
+                CONFIG=bulk_${CONFIG}
+              fi
             else
               echo "[ERROR] - Unrecognized tier: ${TIER} - exiting."
               exit 1
@@ -53,6 +61,7 @@ commands:
             echo "export DEPLOYMENT_CLIENT_EMAIL=${CLIENT_EMAIL}" >> $BASH_ENV
             echo "export DEPLOYMENT_PROJECT_ID=${PROJECT_ID}" >> $BASH_ENV
             echo "export DEPLOYMENT_BUCKET=${BUCKET}" >> $BASH_ENV
+            echo "export DEPLOYMENT_CONFIG=${CONFIG}" >> $BASH_ENV
 
             echo "Project settings assigned:"
             echo "Deployment client: ${CLIENT_EMAIL}"
@@ -65,7 +74,7 @@ commands:
           name: "Set tier-specific configuration file"
           command: |
             sudo -E /bin/bash ./shell/pull_config.sh
-            xargs -a proxy_deployment_config.txt -I{} echo "export {}" >> $BASH_ENV
+            xargs -a ${DEPLOYMENT_CONFIG} -I{} echo "export {}" >> $BASH_ENV
 
   auth:
     steps:
@@ -148,6 +157,16 @@ jobs:
       - deploy:
           command: |
             sudo -E /bin/bash ./shell/unpack_for_deployment.sh
+            #
+            # The bulk proxies require gunicorn:
+            #
+            echo "TIER IS ${TIER}"
+            ls -las *.txt
+            if [[ ${TIER} =~ BULK-.* ]]; then
+              echo "Updating requirements"
+              sudo mv -f bulk_requirements.txt requirements.txt
+              ls -las *.txt
+            fi    
             # Google docs say that if you want App Engine Standard to talk to redis, you are
             # using a Serverless VPC access connector, which means that RIGHT NOW (02/2020) you
             # MUST use the gcloud beta:
@@ -168,3 +187,6 @@ workflows:
                 - master
                 - idc-proxy-prod
                 - idc-proxy-test
+                - idc-proxy-bulk-prod
+                - idc-proxy-bulk-test
+                - idc-proxy-bulk-dev

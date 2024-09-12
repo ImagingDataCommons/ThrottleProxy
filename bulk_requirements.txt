@@ -2,4 +2,5 @@ requests
 Flask
 google-auth
 redis
+gunicorn
 
