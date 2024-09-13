@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 
-from flask import Flask, abort, Response, stream_with_context, request, g, jsonify
+from flask import Flask, abort, Response, stream_with_context, request, g, jsonify, make_response
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
@@ -63,9 +63,12 @@ ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
 CLOUD_IP_URL = 'https://www.gstatic.com/ipranges/cloud.json'
 RAND_500_RATE = float(settings['RAND_500_RATE'])
+BULK_PATH_PREFIX = settings['BULK_PATH_PREFIX']
+IS_BULK = (settings['IS_BULK'].lower() == 'true')
 BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
+BULK_LOG_TAG = "(BULK) " if IS_BULK else ""
 
 app = Flask(__name__)
 
@@ -202,9 +205,9 @@ def teardown(request):
         pre_millis = int(round(time.time() * 1000))
         curr_use_per_ip, curr_use_global = redis_transaction_wrapper()
         post_millis = int(round(time.time() * 1000))
-        logger.info("DAILY USAGE ON {} FOR IP {} is now {} bytes".format(curr_use_per_ip['day'],
+        logger.info("{}DAILY USAGE ON {} FOR IP {} is now {} bytes".format(BULK_LOG_TAG, curr_use_per_ip['day'],
                                                                          g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
-        logger.info("DAILY GLOBAL USAGE ON {} is now {} bytes".format(curr_use_global['day'], curr_use_global['bytes'] ))
+        logger.info("{}DAILY GLOBAL USAGE ON {} is now {} bytes".format(BULK_LOG_TAG, curr_use_global['day'], curr_use_global['bytes'] ))
 
         end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
 
@@ -214,13 +217,13 @@ def teardown(request):
         # issue this message when it goes over the 10 GB thresholds.
         #
         if end_gb > g.start_gb:
-            logger.info("DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(curr_use_per_ip['day'],
+            logger.info("{}DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(BULK_LOG_TAG, curr_use_per_ip['day'],
                                                                                        g.proxy_ip_addr,
                                                                                        curr_use_per_ip['bytes'] ))
 
-        logger.info("Transaction length ms: {}".format(str(post_millis - pre_millis)))
-        logger.info("Chunk size was {}".format(CHUNK_SIZE))
-        logger.info("reported bytes {}".format(g.proxy_byte_count))
+        logger.info("{}Transaction length ms: {}".format(BULK_LOG_TAG, str(post_millis - pre_millis)))
+        logger.info("{}Chunk size was {}".format(BULK_LOG_TAG, CHUNK_SIZE))
+        logger.info("{}reported bytes {}".format(BULK_LOG_TAG, g.proxy_byte_count))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -448,7 +451,7 @@ def legacy_shim(remainder):
 # The new main handler, which uses an internally configured resource path:
 #
 
-@app.route('/current/<path:remainder>', methods=["GET", "OPTIONS"])
+@app.route('{}/current/<path:remainder>'.format("/{}".format(BULK_PATH_PREFIX) if IS_BULK else ''), methods=["GET", "OPTIONS"])
 def root(remainder):
     return common_core(request, remainder)
 
@@ -596,12 +599,19 @@ def common_core(request, remainder):
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-        logger.info("[STATUS] Received proxy request: {}".format(url))
+        logger.info("[STATUS] {}Received proxy request: {}".format(BULK_LOG_TAG, url))
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
+        #
+        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
+        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
+        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
+        #
+
+        need_to_rewrite = url.endswith("/metadata")
 
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
@@ -638,7 +648,7 @@ def common_core(request, remainder):
             curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
             curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
-            logger.info("Have data for {}: {}, global: {}".format(client_ip, str(curr_use_per_ip), str(curr_use_global)))
+            logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, str(curr_use_per_ip), str(curr_use_global)))
 
 
             # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
@@ -652,7 +662,7 @@ def common_core(request, remainder):
                     byte_count = 0
 
                 if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
-                    logger.info("Current byte count {} for IP {} exceeds daily threshold on {}".format(byte_count, client_ip, todays_date))
+                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, byte_count, client_ip, todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
                     return resp
@@ -671,7 +681,7 @@ def common_core(request, remainder):
 
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
-                    logger.info("Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(client_ip,
+                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(BULK_LOG_TAG, client_ip,
                                                                                                                       last_global_byte_count,
                                                                                                                       todays_date))
                     resp = Response(status=429)
@@ -722,7 +732,9 @@ def common_core(request, remainder):
 
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
-        req = auth_session.request(request.method, req_url, stream=True,
+
+        stream_val = not need_to_rewrite
+        req = auth_session.request(request.method, req_url, stream=stream_val,
                                headers={key: value for (key, value) in request.headers if key != 'Host'},
                                cookies=request.cookies,
                                allow_redirects=False)
@@ -736,8 +748,19 @@ def common_core(request, remainder):
         #
 
         if req.status_code == 429:
-            logger.warning("Google returned a 429, mapping to 500, for IP: {}".format(client_ip))
+            logger.warning("{}Google returned a 429, mapping to 500, for IP: {}".format(BULK_LOG_TAG, client_ip))
             resp = Response(status=500)
+            resp.headers = cors_headers
+            return resp
+
+        #
+        # If the Google backend has a problem and returns a 500, we want to know that *we* are not responsible for
+        # the problem:
+        #
+
+        if req.status_code >= 500:
+            logger.warning("ERROR: Google returned a 500 that we are passing through")
+            resp = Response(status=req.status_code)
             resp.headers = cors_headers
             return resp
 
@@ -750,7 +773,11 @@ def common_core(request, remainder):
         # zipped content before sending it out. That is fixed, so sending the headers along:
         #
         #excluded_headers = ['transfer-encoding', 'connection',
-        excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+
+        if need_to_rewrite:
+            excluded_headers = ['content-encoding', 'transfer-encoding', 'connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+        else:
+            excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
         # For debug
         #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
@@ -765,8 +792,30 @@ def common_core(request, remainder):
             for item in cors_headers.items():
                 headers.append(item)
 
-        #logger.info("Response headers: {}".format(str(headers)))
-        return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
+        if need_to_rewrite:
+            try:
+                backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
+                proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
+                if backend_url in req.text:
+                    patched_text = req.text.replace(backend_url, proxy_url)
+                    logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
+                else:
+                    patched_text = req.text
+                json_metadata = json.loads(patched_text)
+            except requests.JSONDecodeError as e:
+                logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
+                logging.exception(e)
+                resp = Response(status=500)
+                resp.headers = cors_headers
+                return resp
+            resp_as_json = json.dumps(json_metadata)
+            g.proxy_byte_count += len(resp_as_json)
+            res = make_response(resp_as_json, req.status_code)
+            res.headers = headers
+            return res
+        else:
+            #logger.info("Response headers: {}".format(str(headers)))
+            return Response(stream_with_context(counting_wrapper(req, delay_time)), headers=headers, status=req.status_code)
     except Exception as e:
         logging.error("Exception processing request: {}".format(str(e)))
         logging.exception(e)
