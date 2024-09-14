@@ -9,7 +9,7 @@ commands:
             TIER=DEV
             if [[ ${CIRCLE_BRANCH} =~ idc-proxy-(prod|uat|test).* ]]; then
               TIER=$(awk -F- '{print toupper($3)}' \<<< ${CIRCLE_BRANCH})
-            elif [[ ${CIRCLE_BRANCH} =~ idc-proxy-bulk-(prod|test|dev) ]]; then
+            elif [[ ${CIRCLE_BRANCH} =~ idc-proxy-bulk-(prod|testing|dev) ]]; then
               TIER=$(awk -F- '{print "BULK-" toupper($4)}' \<<< ${CIRCLE_BRANCH})
             else
               echo "Saw dev tier branch."
@@ -30,11 +30,14 @@ commands:
             PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_DEV}
             BUCKET=${DEPLOYMENT_BUCKET_IDC_DEV}
             CONFIG=proxy_deployment_config.txt
-            if [[ ${TIER} == "PROD" ]]; then
+            if [[ ${TIER} == "PROD" || ${TIER} == "BULK-PROD" ]]; then
               KEY=${DEPLOYMENT_KEY_IDC_PROD}
               CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_PROD}
               PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_PROD}
               BUCKET=${DEPLOYMENT_BUCKET_IDC_PROD}
+              if [[ ${TIER} == "BULK-PROD" ]]; then
+                CONFIG=bulk_${CONFIG}
+              fi   
               echo "Using production project and related deployment SA and bucket."
             elif [[ ${TIER} == "UAT" ]]; then
               KEY=${DEPLOYMENT_KEY_IDC_UAT}
@@ -42,11 +45,14 @@ commands:
               PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_UAT}
               BUCKET=${DEPLOYMENT_BUCKET_IDC_UAT}
               echo "Using UAT project and related deployment SA and bucket."
-            elif [[ ${TIER} == "TEST" ]]; then
+            elif [[ ${TIER} == "TEST" || ${TIER} == "BULK-TESTING" ]]; then
               KEY=${DEPLOYMENT_KEY_IDC_TEST}
               CLIENT_EMAIL=${DEPLOYMENT_CLIENT_EMAIL_IDC_TEST}
               PROJECT_ID=${DEPLOYMENT_PROJECT_ID_IDC_TEST}
               BUCKET=${DEPLOYMENT_BUCKET_IDC_TEST}
+              if [[ ${TIER} == "BULK-TESTING" ]]; then
+                CONFIG=bulk_${CONFIG}
+              fi
               echo "Using test project and related deployment SA and bucket."
             elif [[ ${TIER} == "DEV" || ${TIER} == "BULK-DEV" ]]; then
               echo "Using development/default project and related deployment SA and bucket."
@@ -188,5 +194,5 @@ workflows:
                 - idc-proxy-prod
                 - idc-proxy-test
                 - idc-proxy-bulk-prod
-                - idc-proxy-bulk-test
+                - idc-proxy-bulk-testing
                 - idc-proxy-bulk-dev
