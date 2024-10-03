@@ -484,6 +484,12 @@ def common_core(request, remainder):
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
 
+    if IS_BULK:
+        logger.info("BULK request from {} is getting a 204".format(client_ip))
+        resp = Response(status=204)
+        cors_headers["Content-Length"] = 0
+        resp.headers = cors_headers
+        return resp
 
     #
     # If an allowed hosts list exists, and the caller is not on it, we stop right here. Designed to restrict
@@ -804,6 +810,7 @@ def common_core(request, remainder):
                 else:
                     patched_text = req.text
                 json_metadata = json.loads(patched_text)
+                '''
                 if have_found:
                     if type(json_metadata) is list:
                         if type(json_metadata[0]) is dict:
@@ -812,16 +819,7 @@ def common_core(request, remainder):
                                     if "BulkDataURI" in json_metadata[0]["00020001"]:
                                         print ("Have found BulkDataURI entry in metadata and am deleting")
                                         del json_metadata[0]["00020001"]
-                                    else:
-                                        print('json_metadata[0]["00020001"] dict did not have key "BulkDataURI"')
-                                else:
-                                    print('json_metadata[0]["00020001"] not a dict')
-                            else:
-                                print("key 00020001 not in json_metadata[0]")
-                        else:
-                            print("json_metadata[0] not a dict")
-                    else:
-                        print("json_metadata not a list")
+                '''
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
                 logging.exception(e)
