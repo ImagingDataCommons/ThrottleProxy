@@ -797,8 +797,8 @@ def common_core(request, remainder):
                 have_found = False
                 backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
-                have_found = True
                 if backend_url in req.text:
+                    have_found = True
                     patched_text = req.text.replace(backend_url, proxy_url)
                     logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
                 else:
