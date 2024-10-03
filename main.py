@@ -794,14 +794,34 @@ def common_core(request, remainder):
 
         if need_to_rewrite:
             try:
+                have_found = False
                 backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
+                have_found = True
                 if backend_url in req.text:
                     patched_text = req.text.replace(backend_url, proxy_url)
                     logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
                 else:
                     patched_text = req.text
                 json_metadata = json.loads(patched_text)
+                if have_found:
+                    if type(json_metadata) is list:
+                        if type(json_metadata[0]) is dict:
+                            if "00020001" in json_metadata[0]:
+                                if type(json_metadata[0]["00020001"]) is dict:
+                                    if "BulkDataURI" in json_metadata[0]["00020001"]:
+                                        print ("Have found BulkDataURI entry in metadata and am deleting")
+                                        del json_metadata[0]["00020001"]
+                                    else:
+                                        print('json_metadata[0]["00020001"] dict did not have key "BulkDataURI"')
+                                else:
+                                    print('json_metadata[0]["00020001"] not a dict')
+                            else:
+                                print("key 00020001 not in json_metadata[0]")
+                        else:
+                            print("json_metadata[0] not a dict")
+                    else:
+                        print("json_metadata not a list")
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
                 logging.exception(e)
