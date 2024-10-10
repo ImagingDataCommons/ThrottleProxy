@@ -484,13 +484,6 @@ def common_core(request, remainder):
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
 
-    if IS_BULK:
-        logger.info("BULK request from {} is getting a 204".format(client_ip))
-        resp = Response(status=204)
-        cors_headers["Content-Length"] = 0
-        resp.headers = cors_headers
-        return resp
-
     #
     # If an allowed hosts list exists, and the caller is not on it, we stop right here. Designed to restrict
     # access to e.g. development team:
