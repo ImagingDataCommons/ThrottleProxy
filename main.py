@@ -27,6 +27,7 @@ from google.auth.transport.requests import AuthorizedSession
 import datetime
 import redis
 import json
+import re
 from random import random
 from urllib.parse import urlparse
 
@@ -793,26 +794,14 @@ def common_core(request, remainder):
 
         if need_to_rewrite:
             try:
-                have_found = False
-                backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
-                proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
+                backend_url = '{}{}'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 if backend_url in req.text:
-                    have_found = True
-                    patched_text = req.text.replace(backend_url, proxy_url)
-                    logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
+                    patched_first_pass = re.sub(r', "\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"}', "", req.text)
+                    patched_text = re.sub(r'{"\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"},', "{", patched_first_pass)
+                    logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
                 else:
                     patched_text = req.text
                 json_metadata = json.loads(patched_text)
-                '''
-                if have_found:
-                    if type(json_metadata) is list:
-                        if type(json_metadata[0]) is dict:
-                            if "00020001" in json_metadata[0]:
-                                if type(json_metadata[0]["00020001"]) is dict:
-                                    if "BulkDataURI" in json_metadata[0]["00020001"]:
-                                        print ("Have found BulkDataURI entry in metadata and am deleting")
-                                        del json_metadata[0]["00020001"]
-                '''
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
                 logging.exception(e)
