@@ -805,7 +805,7 @@ def common_core(request, remainder):
                         logger.info("first pass unchanged")
                         results = re.findall(sub1, req.text)
                         for m in results:
-                            print(m)
+                            logger.info(m)
 
                     patched_text = re.sub(sub2, "{", patched_first_pass)
                     if patched_first_pass == patched_text:
