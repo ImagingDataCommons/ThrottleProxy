@@ -796,10 +796,11 @@ def common_core(request, remainder):
             try:
                 backend_url = '{}{}'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 if backend_url in req.text:
+                    oneline = req.text.replace(r'\n', ' ')
                     logger.info(req.text[:200])
                     #sub1 = r', "\w{8}": {"vr": "OB", "BulkDataURI": "https://[\w/\.]*"}'
                     sub1 = '{"vr": "OB", "BulkDataURI"'
-                    results = re.findall(sub1, req.text)
+                    results = re.findall(sub1, oneline)
                     for m in results:
                         logger.info(m)
                     #sub2 = r'{"\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"},'
