@@ -796,7 +796,9 @@ def common_core(request, remainder):
             try:
                 backend_url = '{}{}'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 if backend_url in req.text:
-                    oneline = req.text.replace(r'\n', ' ')
+                    json_metadata = json.loads(req.text)
+                    oneline = json.dumps(json_metadata)
+                    #oneline = req.text.replace(r'\n', ' ')
                     logger.info(req.text[:200])
                     #sub1 = r', "\w{8}": {"vr": "OB", "BulkDataURI": "https://[\w/\.]*"}'
                     sub1 = '{"vr": "OB", "BulkDataURI"'
@@ -807,10 +809,10 @@ def common_core(request, remainder):
                     logger.info(sub1)
                     #logger.info(sub2)
                     #patched_first_pass = re.sub(sub1, '{"vr": "OB", "BlukDataURI"', req.text)
-                    patched_first_pass = req.text.replace(sub1, '{"vr": "OB", "BlukDataURI"')
-                    if patched_first_pass == req.text:
+                    patched_first_pass = oneline.replace(sub1, '{"vr": "OB", "BlukDataURI"')
+                    if patched_first_pass == oneline:
                         logger.info("first pass unchanged")
-                        results = re.findall(sub1, req.text)
+                        results = re.findall(sub1, oneline)
                         for m in results:
                             logger.info(m)
 
