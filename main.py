@@ -807,6 +807,7 @@ def common_core(request, remainder):
                         results = re.findall(sub1, req.text)
                         for m in results:
                             logger.info(m)
+                        patched_first_pass = patched_first_pass.replace("BulkDataURI", "")
 
                     patched_text = re.sub(sub2, "{", patched_first_pass)
                     if patched_first_pass == patched_text:
