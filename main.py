@@ -806,7 +806,10 @@ def common_core(request, remainder):
                     patched_text = re.sub(sub2, "{", patched_first_pass)
                     if patched_first_pass == patched_text:
                         logger.info("second pass unchanged")
-                    logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
+                        if "BulkDataURI" not in req.text:
+                            logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
+                        else:
+                            logger.info("Have NOT suppressed a bulk data key-value for: {}".format(backend_url))
                 else:
                     patched_text = req.text
                 json_metadata = json.loads(patched_text)
