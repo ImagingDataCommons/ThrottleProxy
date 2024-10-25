@@ -796,9 +796,20 @@ def common_core(request, remainder):
             try:
                 backend_url = '{}{}'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
                 if backend_url in req.text:
-                    patched_first_pass = re.sub(r', "\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"}', "", req.text)
-                    patched_text = re.sub(r'{"\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"},', "{", patched_first_pass)
-                    logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
+                    sub1 = r', "\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"}'
+                    sub2 = r'{"\w{8}": {"vr": "OB", "BulkDataURI": "'f'{backend_url}'r'/[\w/\.]*"},'
+                    logger.info(sub1)
+                    logger.info(sub2)
+                    patched_first_pass = re.sub(sub1, "", req.text)
+                    if patched_first_pass == req.text:
+                        logger.info("first pass unchanged")
+                    patched_text = re.sub(sub2, "{", patched_first_pass)
+                    if patched_first_pass == patched_text:
+                        logger.info("second pass unchanged")
+                        if "BulkDataURI" not in req.text:
+                            logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
+                        else:
+                            logger.info("Have NOT suppressed a bulk data key-value for: {}".format(backend_url))
                 else:
                     patched_text = req.text
                 json_metadata = json.loads(patched_text)
