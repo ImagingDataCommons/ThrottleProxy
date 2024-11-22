@@ -72,10 +72,10 @@ FIX_COUNT = 3
 BULK_LOG_TAG = "(BULK) " if IS_BULK else ""
 SUPPRESS_BULK = (settings['SUPPRESS_BULK'].lower() == 'true')
 HUGE_STUDIES = settings['HUGE_STUDIES'] if 'HUGE_STUDIES' in settings else None
+HUGE_STUDIES_LIST = []
 if HUGE_STUDIES is not None:
-    HUGE_STUDIES_LIST = HUGE_STUDIES.split(';')
-else:
-    HUGE_STUDIES_LIST = []
+    if HUGE_STUDIES.lower() != 'none':
+        HUGE_STUDIES_LIST = HUGE_STUDIES.split(';')
 
 app = Flask(__name__)
 
@@ -809,6 +809,10 @@ def common_core(request, remainder):
         if cors_headers:
             for item in cors_headers.items():
                 headers.append(item)
+
+        if need_to_drop_trans:
+            for h in headers:
+                print(h)
 
         if need_to_rewrite:
             try:
