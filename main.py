@@ -806,8 +806,14 @@ def common_core(request, remainder):
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
-        headers = [(name, value) for (name, value) in req.raw.headers.items()
-                   if name.lower() not in excluded_headers]
+        headers = []
+        for (name, value) in req.raw.headers.items():
+            if name.lower() not in excluded_headers:
+                if need_to_drop_trans:
+                    if name.lower == "content-type":
+                        value = value.replace("; transfer-syntax=*", "")
+                headers.append((name, value))
+
         if cors_headers:
             for item in cors_headers.items():
                 headers.append(item)
