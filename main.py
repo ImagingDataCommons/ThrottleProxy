@@ -810,8 +810,8 @@ def common_core(request, remainder):
         for (name, value) in req.raw.headers.items():
             if name.lower() not in excluded_headers:
                 if need_to_drop_trans:
-                    print("Looking at >>{}<< >>{}<< >>{}<<".format(name, name.lower, value))
-                    if name.lower == "content-type":
+                    print("Looking at >>{}<< >>{}<< >>{}<<".format(name, value))
+                    if name.lower() == "content-type":
                         value = value.replace("; transfer-syntax=*", "")
                         print("value now at", value)
                 headers.append((name, value))
