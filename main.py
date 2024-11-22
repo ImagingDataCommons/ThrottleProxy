@@ -71,6 +71,11 @@ ABANDON_COUNT = 10
 FIX_COUNT = 3
 BULK_LOG_TAG = "(BULK) " if IS_BULK else ""
 SUPPRESS_BULK = (settings['SUPPRESS_BULK'].lower() == 'true')
+HUGE_STUDIES = settings['HUGE_STUDIES'] if 'HUGE_STUDIES' in settings else None
+if HUGE_STUDIES is not None:
+    HUGE_STUDIES_LIST = HUGE_STUDIES.split(';')
+else:
+    HUGE_STUDIES_LIST = []
 
 app = Flask(__name__)
 
@@ -615,6 +620,16 @@ def common_core(request, remainder):
         need_to_rewrite = url.endswith("/metadata")
 
         #
+        # Check if we have a huge study that needs to suppress "transfer_encoding=*" yo get Google to send it compressed:
+        #
+
+        need_to_drop_trans = False
+        for study in HUGE_STUDIES_LIST:
+            if study in url:
+                need_to_drop_trans = True
+                break
+
+        #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
         # would be no egress charge. But it turns out that bytes passing through the web app are going to get
         # charged anyway, so the functionality is of limited use:
@@ -779,6 +794,8 @@ def common_core(request, remainder):
             excluded_headers = ['content-encoding', 'transfer-encoding', 'connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
         else:
             excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
+            if need_to_drop_trans:
+                excluded_headers.append('transfer-encoding')
 
         # For debug
         #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
