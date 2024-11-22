@@ -749,9 +749,17 @@ def common_core(request, remainder):
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
 
+        req_headers = {key: value for (key, value) in request.headers if key != 'Host'}
+        if need_to_drop_trans:
+            for key in req_headers:
+                if key.lower() == "accept":
+                    print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                    req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
+                    print("value now at", req_headers[key])
+
         stream_val = not need_to_rewrite
         req = auth_session.request(request.method, req_url, stream=stream_val,
-                               headers={key: value for (key, value) in request.headers if key != 'Host'},
+                               headers=req_headers,
                                cookies=request.cookies,
                                allow_redirects=False)
 
@@ -795,10 +803,6 @@ def common_core(request, remainder):
         else:
             excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
 
-        if need_to_drop_trans:
-            for (name, value) in req.raw.headers.items():
-                print("raw", name, value)
-
         # For debug
         #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
 
@@ -806,23 +810,12 @@ def common_core(request, remainder):
         #for name, value in req.raw.headers.items():
         #    logger.info("GOOGLE RETURNS: {}: {}".format(name, value))
 
-        headers = []
-        for (name, value) in req.raw.headers.items():
-            if name.lower() not in excluded_headers:
-                if need_to_drop_trans:
-                    print("Looking at >>{}<< >>{}<<".format(name, value))
-                    if name.lower() == "content-type":
-                        value = value.replace("; transfer-syntax=*", "")
-                        print("value now at", value)
-                headers.append((name, value))
+        headers = [(name, value) for (name, value) in req.raw.headers.items()
+                   if name.lower() not in excluded_headers]
 
         if cors_headers:
             for item in cors_headers.items():
                 headers.append(item)
-
-        if need_to_drop_trans:
-            for h in headers:
-                print(h)
 
         if need_to_rewrite:
             try:
