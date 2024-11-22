@@ -794,8 +794,10 @@ def common_core(request, remainder):
             excluded_headers = ['content-encoding', 'transfer-encoding', 'connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
         else:
             excluded_headers = ['connection', 'access-control-allow-origin', "access-control-allow-methods" , "access-control-allow-headers"]
-            if need_to_drop_trans:
-                excluded_headers.append('transfer-syntax')
+
+        if need_to_drop_trans:
+            for (name, value) in req.raw.headers.items():
+                print("raw", name, value)
 
         # For debug
         #logger.info("GOOGLE RETURNS STATUS: {}".format(req.status_code))
