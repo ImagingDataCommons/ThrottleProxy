@@ -27,6 +27,7 @@ from google.auth.transport.requests import AuthorizedSession
 import datetime
 import redis
 import json
+import re
 from random import random
 from urllib.parse import urlparse
 
@@ -69,6 +70,12 @@ BACKOFF_COUNT = 3
 ABANDON_COUNT = 10
 FIX_COUNT = 3
 BULK_LOG_TAG = "(BULK) " if IS_BULK else ""
+SUPPRESS_BULK = (settings['SUPPRESS_BULK'].lower() == 'true')
+HUGE_STUDIES = settings['HUGE_STUDIES'] if 'HUGE_STUDIES' in settings else None
+HUGE_STUDIES_LIST = []
+if HUGE_STUDIES is not None:
+    if HUGE_STUDIES.lower() != 'none':
+        HUGE_STUDIES_LIST = HUGE_STUDIES.split(';')
 
 app = Flask(__name__)
 
@@ -484,7 +491,6 @@ def common_core(request, remainder):
         #logger.info("REQUEST METHOD {}".format(request.method))
         #logger.info("Request headers: {}".format(str(request.headers)))
 
-
     #
     # If an allowed hosts list exists, and the caller is not on it, we stop right here. Designed to restrict
     # access to e.g. development team:
@@ -614,6 +620,16 @@ def common_core(request, remainder):
         need_to_rewrite = url.endswith("/metadata")
 
         #
+        # Check if we have a huge study that needs to suppress "transfer_encoding=*" yo get Google to send it compressed:
+        #
+
+        need_to_drop_trans = False
+        for study in HUGE_STUDIES_LIST:
+            if study in url:
+                need_to_drop_trans = True
+                break
+
+        #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
         # would be no egress charge. But it turns out that bytes passing through the web app are going to get
         # charged anyway, so the functionality is of limited use:
@@ -733,9 +749,17 @@ def common_core(request, remainder):
         #logger.info("Request headers: {}".format(str(request.headers)))
         # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
 
+        req_headers = {key: value for (key, value) in request.headers if key != 'Host'}
+        if need_to_drop_trans:
+            for key in req_headers:
+                if key.lower() == "accept":
+                    print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                    req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
+                    print("value now at", req_headers[key])
+
         stream_val = not need_to_rewrite
         req = auth_session.request(request.method, req_url, stream=stream_val,
-                               headers={key: value for (key, value) in request.headers if key != 'Host'},
+                               headers=req_headers,
                                cookies=request.cookies,
                                allow_redirects=False)
 
@@ -788,19 +812,50 @@ def common_core(request, remainder):
 
         headers = [(name, value) for (name, value) in req.raw.headers.items()
                    if name.lower() not in excluded_headers]
+
         if cors_headers:
             for item in cors_headers.items():
                 headers.append(item)
 
         if need_to_rewrite:
             try:
-                backend_url = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
-                proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
-                if backend_url in req.text:
-                    patched_text = req.text.replace(backend_url, proxy_url)
-                    logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
+                #
+                # We have two options for dealing with the BulkDataURI returned by Google Healthcare. We can either rewrite
+                # the URL to point to an AE Flex proxy that can handle > 32 MB requests, or we can strip the URI key/value
+                # entry out entirely. The latter will make the current v1beta1 (10/2024) enpoint behave like the current
+                # v1 endpoint, which does not provide a BulkDataURI
+                #
+                if not SUPPRESS_BULK:
+                    backend_url_with_slash = '{}{}/'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
+                    proxy_url = "https://{}/{}/current/{}{}".format(ALLOWED_HOST, BULK_PATH_PREFIX, USAGE_DECORATION, PATH_TAIL)
+                    if backend_url_with_slash in req.text:
+                        patched_text = req.text.replace(backend_url_with_slash, proxy_url)
+                        logger.info("Have performed a bulk data rewrite to: {}".format(proxy_url))
+                    else:
+                        patched_text = req.text
                 else:
-                    patched_text = req.text
+                    backend_url = '{}{}'.format(GOOGLE_HC_URL, CURRENT_STORE_PATH)
+                    if backend_url in req.text:
+                        # logger.info(req.text[:200])
+                        sub1 = r',"\w{8}":{"vr":"\w{2}","BulkDataURI":"'f'{backend_url}'r'/[\w/\.]*"}'
+                        sub2 = r'{"\w{8}":{"vr":"\w{2}","BulkDataURI":"'f'{backend_url}'r'/[\w/\.]*"},'
+                        logger.info(sub1)
+                        logger.info(sub2)
+                        patched_first_pass = re.sub(sub1, '', req.text)
+                        if patched_first_pass == req.text:
+                            logger.info("first pass unchanged")
+                            results = re.findall(sub1, req.text)
+                            for m in results:
+                                logger.info(m)
+                        patched_text = re.sub(sub2, "{", patched_first_pass)
+                        if patched_first_pass == patched_text:
+                            logger.info("second pass unchanged")
+                        if "BulkDataURI" not in req.text:
+                            logger.info("Have suppressed a bulk data key-value for: {}".format(backend_url))
+                        else:
+                            logger.info("Have NOT suppressed a bulk data key-value for: {}".format(backend_url))
+                    else:
+                        patched_text = req.text
                 json_metadata = json.loads(patched_text)
             except requests.JSONDecodeError as e:
                 logging.error("Exception parsing JSON Metadata: {}".format(str(e)))
