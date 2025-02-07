@@ -42,5 +42,11 @@ Note that when you want to tear down the proxy, you will want to delete the Redi
 connector, since they cost money to run. You will also want to disable AppEngine in the project (it
 cannot be deleted, only disabled).
 
+As it is currently set up, the proxy will serve up content with this path, per the config file. Note how
+the trailing "/" separator needs to be the last character of the USAGE_DECORATION value, and "current"
+is hardwired into the path:
+
+https://${ALLOWED_HOST}/current/${USAGE_DECORATION}${PATH_TAIL}/studies/....
+
 
 **Force Redeploy**
