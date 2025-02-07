@@ -1,14 +1,18 @@
-runtime: python37
+runtime: python310
 
-instance_class: F2
+instance_class: F4
 
 inbound_services:
   - warmup
 
 env_variables:
   IDC_THROTTLE_PROXY_CONFIG: ./config.txt
+#
+# This is how you wiggle worker count (here it is two):
+#
+#entrypoint: gunicorn -b :8080 -w 2 main:app
 
-service: proxy
+service: default
 
 handlers:
   - url: /.*
@@ -18,17 +22,17 @@ handlers:
     script: auto
 
 automatic_scaling:
-  min_idle_instances: automatic
-  max_idle_instances: automatic
+  min_idle_instances: 1
+  max_idle_instances: 15
   min_pending_latency: 0.030s
   max_pending_latency: automatic
   max_concurrent_requests: 20
   target_cpu_utilization: 0.65
-  min_instances: 3
-  max_instances: 100
+  min_instances: 1
+  max_instances: 30
 
 vpc_access_connector:
-  name: 'projects/<project-id>/locations/<location>/connectors/redis-connector'
+  name: 'projects/<project-id>/locations/<location>/connectors/<connector-name>'
 
 network:
   instance_tag: default
