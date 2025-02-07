@@ -753,9 +753,9 @@ def common_core(request, remainder):
         if need_to_drop_trans:
             for key in req_headers:
                 if key.lower() == "accept":
-                    print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                    #print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
                     req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
-                    print("value now at", req_headers[key])
+                    #print("value now at", req_headers[key])
 
         stream_val = not need_to_rewrite
         req = auth_session.request(request.method, req_url, stream=stream_val,
