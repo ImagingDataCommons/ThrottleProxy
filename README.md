@@ -8,7 +8,7 @@ degradation occurs in two steps. Once the daily limit is reached, the proxy retu
 
 You need to deploy a *REDIS* server with Serverless VPC Access.
 
-Using a redis server:
+Using a redis server: 
 
 1) Set up the server. Enable the Memorystore API. Create the instance.
 2) For App Enging Standard, have to set up Serverless VPC Access.
