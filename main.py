@@ -59,6 +59,7 @@ HSTS_AGE = int(settings['HSTS_AGE'])
 HSTS_PRELOAD = (settings['HSTS_PRELOAD'].lower() == 'true')
 USAGE_DECORATION = settings['USAGE_DECORATION']
 CURRENT_STORE_PATH = settings['CURRENT_STORE_PATH']
+CURRENT_STORE_PATH_TWO = settings['CURRENT_STORE_PATH_TWO']
 PATH_TAIL = settings['PATH_TAIL']
 ALLOWED_LEGACY_PREFIX = settings['ALLOWED_LEGACY_PREFIX']
 GLOBAL_IP_ADDRESS = "192.168.255.255"
@@ -584,7 +585,7 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-    url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
+
 
     #
     # Handle CORS:
@@ -605,29 +606,15 @@ def common_core(request, remainder):
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-        logger.info("[STATUS] {}Received proxy request: {}".format(BULK_LOG_TAG, url))
+
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
-        #
-        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
-        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
-        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
-        #
 
-        need_to_rewrite = url.endswith("/metadata")
 
-        #
-        # Check if we have a huge study that needs to suppress "transfer_encoding=*" yo get Google to send it compressed:
-        #
 
-        need_to_drop_trans = False
-        for study in HUGE_STUDIES_LIST:
-            if study in url:
-                need_to_drop_trans = True
-                break
 
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
@@ -735,33 +722,72 @@ def common_core(request, remainder):
                 resp.headers = cors_headers
                 return resp
 
+        #
+        # We are no moving to a model where we need to use two GHC stores, where the primary store support the
+        # vast majority of the files. We use the primary store first, and fall back to the backup store
+        # if needed. This is much less bookkeeping that trying to keep track of what what store holds what
+        # studies
+        #
 
-        req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
-            if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
+        need_to_rewrite = False
+        store_to_use = CURRENT_STORE_PATH
+        while True:
+            #
+            # URLs change with each attempt, so now do these chores in the test loop:
+            #
 
-        if request.query_string:
-            logger.info("Request URL with query: {}".format(req_url))
+            url = "{}/{}".format(store_to_use, remainder)
 
-        # For debug:
-        #for name, value in request.headers.items():
-        #    logger.info("OHIF ASK: {}: {}".format(name, value))
+            #
+            # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
+            # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
+            # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
+            #
 
-        #logger.info("Request headers: {}".format(str(request.headers)))
-        # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
+            need_to_rewrite = url.endswith("/metadata")
+            logger.info("[STATUS] {} Received proxy request: {}".format(BULK_LOG_TAG, url))
 
-        req_headers = {key: value for (key, value) in request.headers if key != 'Host'}
-        if need_to_drop_trans:
-            for key in req_headers:
-                if key.lower() == "accept":
-                    #print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
-                    req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
-                    #print("value now at", req_headers[key])
+            #
+            # Check if we have a huge study that needs to suppress "transfer_encoding=*" to get Google to send it compressed:
+            #
 
-        stream_val = not need_to_rewrite
-        req = auth_session.request(request.method, req_url, stream=stream_val,
-                               headers=req_headers,
-                               cookies=request.cookies,
-                               allow_redirects=False)
+            need_to_drop_trans = False
+            for study in HUGE_STUDIES_LIST:
+                if study in url:
+                    need_to_drop_trans = True
+                    break
+
+            req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
+                if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
+
+            if request.query_string:
+                logger.info("Request URL with query: {}".format(req_url))
+
+            # For debug:
+            #for name, value in request.headers.items():
+            #    logger.info("OHIF ASK: {}: {}".format(name, value))
+
+            #logger.info("Request headers: {}".format(str(request.headers)))
+            # per https://stackoverflow.com/questions/6656363/proxying-to-another-web-service-with-flask
+
+            req_headers = {key: value for (key, value) in request.headers if key != 'Host'}
+            if need_to_drop_trans:
+                for key in req_headers:
+                    if key.lower() == "accept":
+                        #print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                        req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
+                        #print("value now at", req_headers[key])
+
+            stream_val = not need_to_rewrite
+            req = auth_session.request(request.method, req_url, stream=stream_val,
+                                       headers=req_headers,
+                                       cookies=request.cookies,
+                                       allow_redirects=False)
+
+            if req.status_code != 404:
+                break
+
+            store_to_use = CURRENT_STORE_PATH_TWO
 
         #
         # We have seen Google Healthcare API return 429s when the Healthcare API exceeds their per-minute throughput
