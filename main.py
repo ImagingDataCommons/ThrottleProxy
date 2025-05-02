@@ -787,6 +787,7 @@ def common_core(request, remainder):
             if req.status_code != 404:
                 break
 
+            logger.info("Not found in primary store, going to backup: {}".format(req_url))
             store_to_use = CURRENT_STORE_PATH_TWO
 
         #
