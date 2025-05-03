@@ -784,6 +784,7 @@ def common_core(request, remainder):
                                        cookies=request.cookies,
                                        allow_redirects=False)
 
+            logger.info("status code: {} {}".format(req_url, req.status_code))
             if req.status_code != 404:
                 break
 
