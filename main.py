@@ -1,5 +1,5 @@
 """
-Copyright 2020-2021, Institute for Systems Biology
+Copyright 2020-2025, Institute for Systems Biology
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -584,7 +584,7 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-    url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
+
 
     #
     # Handle CORS:
@@ -605,29 +605,15 @@ def common_core(request, remainder):
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-        logger.info("[STATUS] {}Received proxy request: {}".format(BULK_LOG_TAG, url))
+
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
-        #
-        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
-        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
-        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
-        #
 
-        need_to_rewrite = url.endswith("/metadata")
 
-        #
-        # Check if we have a huge study that needs to suppress "transfer_encoding=*" yo get Google to send it compressed:
-        #
 
-        need_to_drop_trans = False
-        for study in HUGE_STUDIES_LIST:
-            if study in url:
-                need_to_drop_trans = True
-                break
 
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
@@ -735,6 +721,32 @@ def common_core(request, remainder):
                 resp.headers = cors_headers
                 return resp
 
+        store_to_use = CURRENT_STORE_PATH
+
+        #
+        # URLs change with each attempt, so now do these chores in the test loop:
+        #
+
+        url = "{}/{}".format(store_to_use, remainder)
+
+        #
+        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
+        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
+        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
+        #
+
+        need_to_rewrite = url.endswith("/metadata")
+        logger.info("[STATUS] {} Received proxy request: {}".format(BULK_LOG_TAG, url))
+
+        #
+        # Check if we have a huge study that needs to suppress "transfer_encoding=*" to get Google to send it compressed:
+        #
+
+        need_to_drop_trans = False
+        for study in HUGE_STUDIES_LIST:
+            if study in url:
+                need_to_drop_trans = True
+                break
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
             if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
@@ -753,15 +765,17 @@ def common_core(request, remainder):
         if need_to_drop_trans:
             for key in req_headers:
                 if key.lower() == "accept":
-                    print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                    #print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
                     req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
-                    print("value now at", req_headers[key])
+                    #print("value now at", req_headers[key])
 
         stream_val = not need_to_rewrite
         req = auth_session.request(request.method, req_url, stream=stream_val,
-                               headers=req_headers,
-                               cookies=request.cookies,
-                               allow_redirects=False)
+                                   headers=req_headers,
+                                   cookies=request.cookies,
+                                   allow_redirects=False)
+
+        logger.info("status code: {} {}".format(req_url, req.status_code))
 
         #
         # We have seen Google Healthcare API return 429s when the Healthcare API exceeds their per-minute throughput
