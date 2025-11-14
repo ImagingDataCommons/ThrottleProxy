@@ -137,7 +137,7 @@ jobs:
           command: |
             sudo -E /bin/bash ./shell/compareConfig.sh "gs://${DEPLOYMENT_BUCKET}/${IDC_PROXY_CONFIG}"
       - save_cache:
-          key: idc-proxy-{{ echo "${TIER}" }}-{{ epoch }}
+          key: idc-proxy-{{ .Environment.TIER }}-{{ epoch }}
           paths:
           - ./shell
           - ./config
@@ -156,7 +156,7 @@ jobs:
       - deployment_setup
       - restore_cache:
           keys:
-            - idc-proxy-{{ echo "${TIER}" }}-
+            - idc-proxy-{{ .Environment.TIER }}-
       - install_cloud_sdk
       - auth
       - deployment_config
