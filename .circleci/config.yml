@@ -16,6 +16,12 @@ commands:
             fi
             echo "export TIER=${TIER}" >> $BASH_ENV
             echo "Tier was identified as ${TIER} for branch ${CIRCLE_BRANCH}"
+            mkdir -p workspace
+            echo "${TIER}:${CIRCLE_BRANCH}" > workspace/tier_and_service.txt
+      - persist_to_workspace:
+          root: workspace
+          paths:
+            - tier_and_service.txt
       - run:
           name: "Assign Project-level vars"
           command: |
@@ -137,7 +143,7 @@ jobs:
           command: |
             sudo -E /bin/bash ./shell/compareConfig.sh "gs://${DEPLOYMENT_BUCKET}/${IDC_PROXY_CONFIG}"
       - save_cache:
-          key: idc-proxy-{{ epoch }}
+          key: idc-proxy-{{ checksum "workspace/tier_and_service.txt" }}-{{ epoch }}
           paths:
           - ./shell
           - ./config
@@ -153,11 +159,13 @@ jobs:
       - image: cimg/python:3.11
     working_directory: ~/ThrottleProxy
     steps:
+      - attach_workspace:
+          at: /tmp/workspace
       - restore_cache:
           keys:
-            - idc-proxy-
-      - install_cloud_sdk
+            - idc-proxy-{{ checksum "/tmp/workspace/tier_and_service.txt" }}-
       - deployment_setup
+      - install_cloud_sdk
       - auth
       - deployment_config
       - deploy:
