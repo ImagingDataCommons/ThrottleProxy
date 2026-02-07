@@ -4,7 +4,7 @@ commands:
   deployment_setup:
     steps:
       - run:
-          name: "Set the Tier"
+          name: "Set the Tier "
           command: |
             TIER=DEV
             if [[ ${CIRCLE_BRANCH} =~ idc-proxy-(prod|uat|test).* ]]; then
