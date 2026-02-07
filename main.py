@@ -661,8 +661,8 @@ def common_core(request, remainder):
             curr_use_global_str = redis_retry_wrapper(GLOBAL_IP_ADDRESS)
             logger.info("[STATUS] Return from REDIS")
 
-            curr_use_per_ip = convert_bytes(json.loads(curr_use_per_ip_str)) if curr_use_per_ip_str is not None else None
-            curr_use_global = convert_bytes(json.loads(curr_use_global_str)) if curr_use_global_str is not None else None
+            curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
+            curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
 
             logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, curr_use_per_ip, curr_use_global))
 
