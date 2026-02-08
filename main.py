@@ -100,6 +100,20 @@ logger = logging.getLogger("main.py")
 
 redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
 
+
+BYTE_VAL = ["","K","M","G","T","P"]
+
+# Simple method to make byte counts more readable
+def convert_bytes(byte_count):
+    if byte_count is None:
+        return "None"
+    val = int(byte_count)
+    inc = 0
+    while val >= 1024:
+        val /= 1024
+        inc += 1
+    return f"{val:.2f} {BYTE_VAL[inc]}B"
+
 #
 # This function does everything we wish to do inside a redis transaction.
 # See: https://github.com/andymccurdy/redis-py/blob/master/README.rst#pipelines
@@ -206,15 +220,15 @@ def teardown(request):
     try:
         if not hasattr(g, 'proxy_ip_addr'):
             if hasattr(g, 'proxy_byte_count'):
-                logger.info("Skipping teardown: cloud access of %i bytes" % g.proxy_byte_count)
+                logger.info("Skipping teardown: cloud access of %i" % convert_bytes(g.proxy_byte_count))
             return
         #logger.info("teardown_request start")
         pre_millis = int(round(time.time() * 1000))
         curr_use_per_ip, curr_use_global = redis_transaction_wrapper()
         post_millis = int(round(time.time() * 1000))
-        logger.info("{}DAILY USAGE ON {} FOR IP {} is now {} bytes".format(BULK_LOG_TAG, curr_use_per_ip['day'],
-                                                                         g.proxy_ip_addr, curr_use_per_ip['bytes'] ))
-        logger.info("{}DAILY GLOBAL USAGE ON {} is now {} bytes".format(BULK_LOG_TAG, curr_use_global['day'], curr_use_global['bytes'] ))
+        logger.info("{}DAILY USAGE ON {} FOR IP {} is now {}".format(BULK_LOG_TAG, curr_use_per_ip['day'],
+                                                                         g.proxy_ip_addr, convert_bytes(curr_use_per_ip['bytes']) ))
+        logger.info("{}DAILY GLOBAL USAGE ON {} is now {}".format(BULK_LOG_TAG, curr_use_global['day'], convert_bytes(curr_use_global['bytes']) ))
 
         end_gb = curr_use_per_ip['bytes'] // 10737418240  # Integer divison by 10 GB
 
@@ -226,11 +240,11 @@ def teardown(request):
         if end_gb > g.start_gb:
             logger.info("{}DATE {} IP {} BYTES {} just chewed thru another 10 GB".format(BULK_LOG_TAG, curr_use_per_ip['day'],
                                                                                        g.proxy_ip_addr,
-                                                                                       curr_use_per_ip['bytes'] ))
+                                                                                       convert_bytes(curr_use_per_ip['bytes']) ))
 
         logger.info("{}Transaction length ms: {}".format(BULK_LOG_TAG, str(post_millis - pre_millis)))
         logger.info("{}Chunk size was {}".format(BULK_LOG_TAG, CHUNK_SIZE))
-        logger.info("{}reported bytes {}".format(BULK_LOG_TAG, g.proxy_byte_count))
+        logger.info("{}reported bytes {}".format(BULK_LOG_TAG, convert_bytes(g.proxy_byte_count)))
         #logger.info("teardown_request done")
         return
     except Exception as e:
@@ -649,8 +663,10 @@ def common_core(request, remainder):
 
             curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
             curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
+            curr_use_per_ip['bytes'] = convert_bytes(curr_use_per_ip['bytes'])
+            curr_use_global['bytes'] = convert_bytes(curr_use_global['bytes'])
 
-            logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, str(curr_use_per_ip), str(curr_use_global)))
+            logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, curr_use_per_ip, curr_use_global))
 
 
             # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
