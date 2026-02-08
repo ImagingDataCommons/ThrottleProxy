@@ -697,7 +697,7 @@ def common_core(request, remainder):
                     byte_count = 0
 
                 if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
-                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, byte_count, client_ip, todays_date))
+                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, convert_bytes(byte_count), client_ip, todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
                     return resp
@@ -717,14 +717,14 @@ def common_core(request, remainder):
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
                     logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(BULK_LOG_TAG, client_ip,
-                                                                                                                      last_global_byte_count,
+                                                                                                                     convert_bytes(last_global_byte_count),
                                                                                                                       todays_date))
                     resp = Response(status=429)
                     resp.headers = cors_headers
                     return resp
 
             if delay_time > 0.0:
-                logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
+                logger.info("Current byte count for IP is: {} so delay is starting at {}".format(convert_bytes(byte_count), delay_time))
 
             #
             # Will need this for the teardown. Don't bother to update the delay during this request.
