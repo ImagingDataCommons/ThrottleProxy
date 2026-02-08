@@ -663,10 +663,13 @@ def common_core(request, remainder):
 
             curr_use_per_ip = json.loads(curr_use_per_ip_str) if curr_use_per_ip_str is not None else None
             curr_use_global = json.loads(curr_use_global_str) if curr_use_global_str is not None else None
-            curr_use_per_ip['bytes'] = convert_bytes(curr_use_per_ip['bytes'])
-            curr_use_global['bytes'] = convert_bytes(curr_use_global['bytes'])
 
-            logger.info("{}Have data for {}: {}, global: {}".format(BULK_LOG_TAG, client_ip, curr_use_per_ip, curr_use_global))
+            logger.info("{}Have data for {}: {}, global: {}".format(
+                BULK_LOG_TAG,
+                client_ip,
+                {'day': curr_use_per_ip['day'], 'bytes': convert_bytes(curr_use_per_ip['bytes'])},
+                {'day': curr_use_global['day'], 'bytes': convert_bytes(curr_use_global['bytes'])},
+            ))
 
 
             # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
