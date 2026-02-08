@@ -681,8 +681,8 @@ def common_core(request, remainder):
             logger.info("{}Have data for {}: {}, global: {}".format(
                 BULK_LOG_TAG,
                 client_ip,
-                {'day': curr_use_per_ip['day'], 'bytes': convert_bytes(curr_use_per_ip['bytes'])},
-                {'day': curr_use_global['day'], 'bytes': convert_bytes(curr_use_global['bytes'])},
+                {'day': curr_use_per_ip['day'], 'bytes': convert_bytes(curr_use_per_ip['bytes'])} if curr_use_per_ip is not None else None,
+                {'day': curr_use_global['day'], 'bytes': convert_bytes(curr_use_global['bytes'])} if curr_use_global is not None else None,
             ))
 
 
