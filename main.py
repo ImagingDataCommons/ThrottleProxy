@@ -54,11 +54,11 @@ OVER_QUOTA_BODY = """
     {quota_type}
   <p>
       IDC images and data can be accessed in several alternative ways which do not have download quotas,
-      detailed on this page: <https://learn.canceridc.dev/data/downloading-data>.
+      detailed on this page: <a href="https://learn.canceridc.dev/data/downloading-data/">https://learn.canceridc.dev/data/downloading-data/</a>.
   </p>
     <p>
       For further details on the usage limits imposed on our DICOMweb interface, consult our
-      proxy policy here: <https://learn.canceridc.dev/portal/proxy-policy/>.
+      proxy policy here: <a href="https://learn.canceridc.dev/portal/proxy-policy/">https://learn.canceridc.dev/portal/proxy-policy/</a>.
   </p>
 """
 
