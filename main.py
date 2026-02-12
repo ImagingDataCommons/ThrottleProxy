@@ -509,7 +509,9 @@ def root(remainder):
 def common_core(request, remainder):
 
     client_ip = request.remote_addr
-    ref = request.referrer
+    # The referrer can be None, so we convert that to an empty string for regex searching purposes (no referrer is
+    # the same as a referrer which isn't a viewer)
+    ref = request.referrer or ""
 
     #
     # Even the 429, 404, and 500 responses need to provide the cors headers to keep OHIF happy enough to process these
