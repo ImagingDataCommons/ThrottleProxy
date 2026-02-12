@@ -36,6 +36,32 @@ from urllib.parse import urlparse
 # Configuration
 #
 
+USER_OVER_QUOTA = """
+  <p>
+      Users are restricted to a quota of <b>{quota} GB</b> per day of medical imaging files accessed via
+      our DICOMweb interface and image viewers. You have reached your daily quota. Your quota will be reset at
+      midnight UTC.
+  </p>
+"""
+
+GLOBAL_OVER_QUOTA = """
+  <p>
+      Our DICOMweb interface and image viewers have exceeded the daily quota of allowed usage. The quota will be reset at midnight UTC.
+  </p>
+"""
+
+OVER_QUOTA_BODY = """
+    {quota_type}
+  <p>
+      IDC images and data can be accessed in several alternative ways which do not have download quotas,
+      detailed on this page: <https://learn.canceridc.dev/data/downloading-data>.
+  </p>
+    <p>
+      For further details on the usage limits imposed on our DICOMweb interface, consult our
+      proxy policy here: <https://learn.canceridc.dev/portal/proxy-policy/>.
+  </p>
+"""
+
 REDIS_HOST = settings['REDIS_HOST']
 REDIS_PORT = int(settings['REDIS_PORT'])
 
@@ -483,6 +509,7 @@ def root(remainder):
 def common_core(request, remainder):
 
     client_ip = request.remote_addr
+    ref = request.referrer
 
     #
     # Even the 429, 404, and 500 responses need to provide the cors headers to keep OHIF happy enough to process these
@@ -683,9 +710,15 @@ def common_core(request, remainder):
                     byte_count = 0
 
                 if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
-                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, convert_bytes(byte_count), client_ip, todays_date))
-                    resp = Response(status=429)
-                    resp.headers = cors_headers
+                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(
+                        BULK_LOG_TAG, convert_bytes(byte_count), client_ip, todays_date)
+                    )
+                    if re.search(r'viewer\.imaging.datacommons\.cancer\.gov',ref):
+                        resp = Response(status=429)
+                        resp.headers = cors_headers
+                    else:
+                        resp = make_response((OVER_QUOTA_BODY.format(quota_type=USER_OVER_QUOTA.format(quota=MAX_PER_IP_PER_DAY)), 429, cors_headers))
+                        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
                     return resp
 
                 start_gb = byte_count // 10737418240  # Integer divison by 10 GB
@@ -702,11 +735,15 @@ def common_core(request, remainder):
 
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
-                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(BULK_LOG_TAG, client_ip,
-                                                                                                                     convert_bytes(last_global_byte_count),
-                                                                                                                      todays_date))
-                    resp = Response(status=429)
-                    resp.headers = cors_headers
+                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(
+                        BULK_LOG_TAG, client_ip,convert_bytes(last_global_byte_count),todays_date)
+                    )
+                    if re.search(r'viewer\.imaging.datacommons\.cancer\.gov', ref):
+                        resp = Response(status=429)
+                        resp.headers = cors_headers
+                    else:
+                        resp = make_response((OVER_QUOTA_BODY.format(quota_type=GLOBAL_OVER_QUOTA), 429, cors_headers))
+                        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
                     return resp
 
             if delay_time > 0.0:
