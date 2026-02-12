@@ -36,6 +36,32 @@ from urllib.parse import urlparse
 # Configuration
 #
 
+USER_OVER_QUOTA = """
+  <p>
+      Users are restricted to a quota of <b>{quota} GB</b> per day of medical imaging files accessed via
+      our DICOMweb interface and image viewers. You have reached your daily quota. Your quota will be reset at
+      midnight UTC.
+  </p>
+"""
+
+GLOBAL_OVER_QUOTA = """
+  <p>
+      Our DICOMweb interface and image viewers have exceeded the daily quota of allowed usage. The quota will be reset at midnight UTC.
+  </p>
+"""
+
+OVER_QUOTA_BODY = """
+    {quota_type}
+  <p>
+      IDC images and data can be accessed in several alternative ways which do not have download quotas,
+      detailed on this page: <a href="https://learn.canceridc.dev/data/downloading-data/">https://learn.canceridc.dev/data/downloading-data/</a>.
+  </p>
+    <p>
+      For further details on the usage limits imposed on our DICOMweb interface, consult our
+      proxy policy here: <a href="https://learn.canceridc.dev/portal/proxy-policy/">https://learn.canceridc.dev/portal/proxy-policy/</a>.
+  </p>
+"""
+
 REDIS_HOST = settings['REDIS_HOST']
 REDIS_PORT = int(settings['REDIS_PORT'])
 
@@ -483,6 +509,9 @@ def root(remainder):
 def common_core(request, remainder):
 
     client_ip = request.remote_addr
+    # The referrer can be None, so we convert that to an empty string for regex searching purposes (no referrer is
+    # the same as a referrer which isn't a viewer)
+    ref = request.referrer or ""
 
     #
     # Even the 429, 404, and 500 responses need to provide the cors headers to keep OHIF happy enough to process these
@@ -598,7 +627,7 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-    url = "{}/{}".format(CURRENT_STORE_PATH, remainder)
+
 
     #
     # Handle CORS:
@@ -619,29 +648,15 @@ def common_core(request, remainder):
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-        logger.info("[STATUS] {}Received proxy request: {}".format(BULK_LOG_TAG, url))
+
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
 
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
 
-        #
-        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
-        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
-        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
-        #
 
-        need_to_rewrite = url.endswith("/metadata")
 
-        #
-        # Check if we have a huge study that needs to suppress "transfer_encoding=*" yo get Google to send it compressed:
-        #
 
-        need_to_drop_trans = False
-        for study in HUGE_STUDIES_LIST:
-            if study in url:
-                need_to_drop_trans = True
-                break
 
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
@@ -697,9 +712,15 @@ def common_core(request, remainder):
                     byte_count = 0
 
                 if byte_count > (MAX_PER_IP_PER_DAY * quota_multiplier):
-                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(BULK_LOG_TAG, byte_count, client_ip, todays_date))
-                    resp = Response(status=429)
-                    resp.headers = cors_headers
+                    logger.info("{}Current byte count {} for IP {} exceeds daily threshold on {}".format(
+                        BULK_LOG_TAG, convert_bytes(byte_count), client_ip, todays_date)
+                    )
+                    if re.search(r'viewer\.imaging.datacommons\.cancer\.gov',ref):
+                        resp = Response(status=429)
+                        resp.headers = cors_headers
+                    else:
+                        resp = make_response((OVER_QUOTA_BODY.format(quota_type=USER_OVER_QUOTA.format(quota=MAX_PER_IP_PER_DAY)), 429, cors_headers))
+                        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
                     return resp
 
                 start_gb = byte_count // 10737418240  # Integer divison by 10 GB
@@ -716,15 +737,19 @@ def common_core(request, remainder):
 
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
-                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(BULK_LOG_TAG, client_ip,
-                                                                                                                      last_global_byte_count,
-                                                                                                                      todays_date))
-                    resp = Response(status=429)
-                    resp.headers = cors_headers
+                    logger.info("{}Current byte count ALL IPS exceeds daily threshold IP: {} bytes: {} date: {}".format(
+                        BULK_LOG_TAG, client_ip,convert_bytes(last_global_byte_count),todays_date)
+                    )
+                    if re.search(r'viewer\.imaging.datacommons\.cancer\.gov', ref):
+                        resp = Response(status=429)
+                        resp.headers = cors_headers
+                    else:
+                        resp = make_response((OVER_QUOTA_BODY.format(quota_type=GLOBAL_OVER_QUOTA), 429, cors_headers))
+                        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
                     return resp
 
             if delay_time > 0.0:
-                logger.info("Current byte count for IP is: {} so delay is starting at {}".format(byte_count, delay_time))
+                logger.info("Current byte count for IP is: {} so delay is starting at {}".format(convert_bytes(byte_count), delay_time))
 
             #
             # Will need this for the teardown. Don't bother to update the delay during this request.
@@ -754,6 +779,32 @@ def common_core(request, remainder):
                 resp.headers = cors_headers
                 return resp
 
+        store_to_use = CURRENT_STORE_PATH
+
+        #
+        # URLs change with each attempt, so now do these chores in the test loop:
+        #
+
+        url = "{}/{}".format(store_to_use, remainder)
+
+        #
+        # Starting in v1beta1 as of 8/2024, the Google endpoint will return the actual full enpdoint URL as the "BulkDataURI"
+        # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
+        # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
+        #
+
+        need_to_rewrite = url.endswith("/metadata")
+        logger.info("[STATUS] {} Received proxy request: {}".format(BULK_LOG_TAG, url))
+
+        #
+        # Check if we have a huge study that needs to suppress "transfer_encoding=*" to get Google to send it compressed:
+        #
+
+        need_to_drop_trans = False
+        for study in HUGE_STUDIES_LIST:
+            if study in url:
+                need_to_drop_trans = True
+                break
 
         req_url = "{}/{}?{}".format(GOOGLE_HC_URL, url, request.query_string.decode("utf-8")) \
             if request.query_string else "{}/{}".format(GOOGLE_HC_URL, url)
@@ -772,15 +823,17 @@ def common_core(request, remainder):
         if need_to_drop_trans:
             for key in req_headers:
                 if key.lower() == "accept":
-                    print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
+                    #print("Looking at >>{}<< >>{}<<".format(key, req_headers[key]))
                     req_headers[key] = req_headers[key].replace("; transfer-syntax=*", "")
-                    print("value now at", req_headers[key])
+                    #print("value now at", req_headers[key])
 
         stream_val = not need_to_rewrite
         req = auth_session.request(request.method, req_url, stream=stream_val,
-                               headers=req_headers,
-                               cookies=request.cookies,
-                               allow_redirects=False)
+                                   headers=req_headers,
+                                   cookies=request.cookies,
+                                   allow_redirects=False)
+
+        logger.info("status code: {} {}".format(req_url, req.status_code))
 
         #
         # We have seen Google Healthcare API return 429s when the Healthcare API exceeds their per-minute throughput

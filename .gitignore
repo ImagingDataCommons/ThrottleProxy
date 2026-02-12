@@ -1,4 +1,6 @@
 lib/
-config.txt
 *.env
 privatekey.json
+
+# Local project settings
+*-SetEnv.sh
