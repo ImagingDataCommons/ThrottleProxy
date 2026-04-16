@@ -52,14 +52,20 @@ GLOBAL_OVER_QUOTA = """
 
 OVER_QUOTA_BODY = """
     {quota_type}
-  <p>
-      IDC images and data can be accessed in several alternative ways which do not have download quotas,
-      detailed on this page: <a href="https://learn.canceridc.dev/data/downloading-data/">https://learn.canceridc.dev/data/downloading-data/</a>.
-  </p>
     <p>
-      For further details on the usage limits imposed on our DICOMweb interface, consult our
-      proxy policy here: <a href="https://learn.canceridc.dev/portal/proxy-policy/">https://learn.canceridc.dev/portal/proxy-policy/</a>.
-  </p>
+        For unrestricted DICOMweb access to IDC data you can use this DICOMweb authenticated endpoint:
+        <em>https://healthcare.googleapis.com/v1/projects/nci-idc-data/locations/us-central1/datasets/idc/dicomStores/idc-store-v23/dicomWeb</em>.
+        Google account authentication is required, but any Google account can access this interface, no whitelisting is necessary!
+        For details see this article: https://learn.canceridc.dev/data/organization-of-data/dicom-stores#dicom-store-maintained-by-google-healthcare
+    </p>
+    <p>
+        Alternative interfaces for data access, which do not have download quotas, are
+        detailed in this article: https://learn.canceridc.dev/data/downloading-data
+    </p>
+    <p>
+        For further details on the usage limits imposed on our DICOMweb interface, consult our
+        proxy policy: https://learn.canceridc.dev/portal/proxy-policy/
+    </p>
 """
 
 REDIS_HOST = settings['REDIS_HOST']
