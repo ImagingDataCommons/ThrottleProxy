@@ -745,7 +745,7 @@ def common_core(request, remainder):
                 if last_global_byte_count >= (MAX_TOTAL_PER_DAY*0.8):
                     threshold = "90%" if last_global_byte_count >= (MAX_TOTAL_PER_DAY*0.9) else "80%"
                     logger.info("{}Current byte count ALL IPS has reached {} of threshold IP: {} bytes: {} date: {}".format(
-                        BULK_LOG_TAG, threshold, convert_bytes(last_global_byte_count),todays_date)
+                        BULK_LOG_TAG, threshold, client_ip, convert_bytes(last_global_byte_count),todays_date)
                     )
                 # Delays are not supported for the global limit:
                 if last_global_byte_count > MAX_TOTAL_PER_DAY:
