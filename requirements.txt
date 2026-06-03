@@ -1,5 +1,4 @@
 requests
 Flask
 google-auth
-redis==7.4.0 # Until we update the redis cache we have to use this version
-
+redis
