@@ -402,7 +402,6 @@ def return_404():
 
 @app.route("/viewer/<study_id>", methods=["GET"])
 def v2_reroute(study_id):
-    headers = {"Strict-Transport-Security": hsts_header}
     v3_url = f"{V3_VIEWER}/viewer/?StudyInstsnceUIDs={study_id}"
     if request.args.get("SeriesUID", None):
         v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
