@@ -13,9 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
-
-from flask import Flask, abort, Response, stream_with_context, request, g, jsonify, make_response
+import os
+from flask import Flask, abort, Response, stream_with_context, request, g, jsonify, make_response, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 import logging
@@ -30,6 +29,8 @@ import json
 import re
 from random import random
 from urllib.parse import urlparse
+
+V3_VIEWER = os.getenv("V3_VIEWER")
 
 
 #
@@ -397,6 +398,16 @@ def return_404():
 #
 # Let callers know where they stand, out of band:
 #
+
+
+@app.route("/viewer/<study_id>", methods=["GET"])
+def v2_reroute(study_id):
+    headers = {"Strict-Transport-Security": hsts_header}
+    v3_url = f"{V3_VIEWER}/viewer/?StudyInstsnceUIDs={study_id}"
+    if request.args.get("SeriesUID", None):
+        v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
+    return redirect(v3_url, code=301)
+
 
 @app.route('/quota_usage', methods=["GET", "OPTIONS"])
 def quota_usage():
