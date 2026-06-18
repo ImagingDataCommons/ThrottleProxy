@@ -380,6 +380,17 @@ def is_in_cidr_list(ip_addr, CIDR_defs):
             return True
     return False
 
+#
+# OHIF v2 redirector
+#
+@app.route("/viewer/<study_id>", methods=["GET"])
+def v2_reroute(study_id):
+    v3_url = f"https://{V3_VIEWER}/viewer/?StudyInstsnceUIDs={study_id}"
+    if request.args.get("SeriesUID", None):
+        v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
+    return redirect(v3_url, code=301)
+
+
 @app.route('/_ah/warmup')
 def warmup():
     # We are configured with warmup requests. If we need to do something, this is the place.
@@ -398,15 +409,6 @@ def return_404():
 #
 # Let callers know where they stand, out of band:
 #
-
-
-@app.route("/viewer/<study_id>", methods=["GET"])
-def v2_reroute(study_id):
-    v3_url = f"{V3_VIEWER}/viewer/?StudyInstsnceUIDs={study_id}"
-    if request.args.get("SeriesUID", None):
-        v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
-    return redirect(v3_url, code=301)
-
 
 @app.route('/quota_usage', methods=["GET", "OPTIONS"])
 def quota_usage():

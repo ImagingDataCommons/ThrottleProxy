@@ -47,6 +47,3 @@ the trailing "/" separator needs to be the last character of the USAGE_DECORATIO
 is hardwired into the path:
 
 https://${ALLOWED_HOST}/current/${USAGE_DECORATION}${PATH_TAIL}/studies/....
-
-
-**Force Redeploy**
