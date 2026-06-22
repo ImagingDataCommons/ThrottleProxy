@@ -383,7 +383,7 @@ def is_in_cidr_list(ip_addr, CIDR_defs):
 #
 # OHIF v2 redirector
 #
-@app.route("/viewer/<study_id>", methods=["GET"])
+@app.route("/viewer/<study_id>", methods=["GET"], strict_slashes=False)
 def v2_reroute(study_id):
     v3_url = f"https://{V3_VIEWER}/viewer/?StudyInstanceUIDs={study_id}"
     if request.args.get("SeriesUID", None):
@@ -410,7 +410,7 @@ def return_404():
 # Let callers know where they stand, out of band:
 #
 
-@app.route('/quota_usage', methods=["GET", "OPTIONS"])
+@app.route('/quota_usage', methods=["GET", "OPTIONS"], strict_slashes=False)
 def quota_usage():
 
     client_ip = request.remote_addr
