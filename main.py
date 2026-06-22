@@ -385,7 +385,7 @@ def is_in_cidr_list(ip_addr, CIDR_defs):
 #
 @app.route("/viewer/<study_id>", methods=["GET"])
 def v2_reroute(study_id):
-    v3_url = f"https://{V3_VIEWER}/viewer/?StudyInstsnceUIDs={study_id}"
+    v3_url = f"https://{V3_VIEWER}/viewer/?StudyInstanceUIDs={study_id}"
     if request.args.get("SeriesUID", None):
         v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
     return redirect(v3_url, code=301)
