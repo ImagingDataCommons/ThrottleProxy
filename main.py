@@ -394,7 +394,7 @@ def solr_proxy(remainder):
         header_skip = ['Host', 'X-WEBAPP-KEY']
         req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
         r = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
-        resp = Response(raw_response(r), headers=req_headers, status=r.status_code)
+        resp = Response(r.raw.read(), headers=req_headers, status=r.status_code)
         return resp
     except Exception as e:
         logger.error(f"[ERROR] While processing {remainder}:")
