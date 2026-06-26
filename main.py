@@ -31,7 +31,8 @@ from random import random
 from urllib.parse import urlparse
 
 V3_VIEWER = os.getenv("V3_VIEWER")
-
+SOLR_URI = os.getenv("SOLR_URI")
+WEBAPP_KEY = os.getenv("WEBAPP_KEY")
 
 #
 # Configuration
@@ -126,17 +127,16 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=FIX_COUNT)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main.py")
 
-#
 # Ok, this is the client we use for this server. Note that it is backed by a connection pool that is managed in
 # a way that does not require us to explicitly release the connection on teardown!
 #
-
 redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
 
 
 BYTE_VAL = ["","K","M","G","T","P"]
 
 # Simple method to make byte counts more readable
+#
 def convert_bytes(byte_count):
     if byte_count is None:
         return "None"
@@ -147,11 +147,10 @@ def convert_bytes(byte_count):
         inc += 1
     return f"{val:.2f} {BYTE_VAL[inc]}B"
 
-#
+
 # This function does everything we wish to do inside a redis transaction.
 # See: https://github.com/andymccurdy/redis-py/blob/master/README.rst#pipelines
 #
-
 def increment_ips(pipe):
     try:
         curr_use_per_ip_str = pipe.get(g.proxy_ip_addr)
@@ -190,10 +189,9 @@ def increment_ips(pipe):
         logging.exception(e)
         raise e
 
-#
+
 # Redis is being flaky, with lots of "connection reset by peer" errors. Do retrys inside a wrapper:
 #
-
 def redis_retry_wrapper(get_arg):
 
     count = 0
@@ -215,10 +213,8 @@ def redis_retry_wrapper(get_arg):
     return retval
 
 
-#
 # Redis is being flaky, with lots of "connection reset by peer" errors. Do retrys inside a wrapper:
 #
-
 def redis_transaction_wrapper():
 
     count = 0
@@ -242,11 +238,9 @@ def redis_transaction_wrapper():
     return curr_use_per_ip, curr_use_global
 
 
-#
 # We only want to do one redis transaction per request. So we store up the data on the size and
 # only update the db atomically when we are done:
 #
-
 @app.teardown_request
 def teardown(request):
 
@@ -285,12 +279,11 @@ def teardown(request):
         logging.exception(e)
         raise e
 
-#
+
 # We can optionally impose a "delay" time as the user gets close to the limit by providing
 # values for these constants > 0. Note, however, that this will require Google to spin up other
 # instances through the load balancer to keep up with traffic, as this just sleeps this instance:
 #
-
 def calc_delay(byte_count):
     if (DEGRADATION_LEVEL_TWO > 0) and (byte_count > DEGRADATION_LEVEL_TWO):
         delay_time = DEGRADATION_LEVEL_TWO_PAUSE
@@ -301,11 +294,10 @@ def calc_delay(byte_count):
 
     return delay_time
 
-#
+
 # This is streaming content, so we count the bytes as they go out the door, based on our streaming chunk size. This
 # slightly overcounts, since we don't know how many bytes go out on the last call:
 #
-
 def counting_wrapper(req, delay_time):
 
     # This is too simple; current Python 3 uses "yield from". But we need to
@@ -342,10 +334,8 @@ def counting_wrapper(req, delay_time):
         raise e
 
 
-#
 # Discover the IPs living in the region where the proxy is deployed
 #
-
 def load_cidr_defs(free_region):
     cidr_defs = []
     if free_region != "NONE":
@@ -356,10 +346,9 @@ def load_cidr_defs(free_region):
                 cidr_defs.append(ipaddress.IPv4Network(prefix['ipv4Prefix']))
     return cidr_defs
 
-#
+
 # Load in lists of CIDR defs for IPs we will allow or deny:
 #
-
 def load_cidr_list(list_string):
     cidr_defs = []
     if list_string == "NONE":
@@ -369,10 +358,9 @@ def load_cidr_list(list_string):
         cidr_defs.append(ipaddress.IPv4Network(cidr_chunk))
     return cidr_defs
 
-#
+
 # Answer if the IP address is in the given CIDR list:
 #
-
 def is_in_cidr_list(ip_addr, CIDR_defs):
     ip_addr_obj = ipaddress.IPv4Address(ip_addr)
     for cidr in CIDR_defs:
@@ -380,7 +368,7 @@ def is_in_cidr_list(ip_addr, CIDR_defs):
             return True
     return False
 
-#
+
 # OHIF v2 redirector
 #
 @app.route("/viewer/<study_id>", methods=["GET"], strict_slashes=False)
@@ -389,6 +377,18 @@ def v2_reroute(study_id):
     if request.args.get("SeriesUID", None):
         v3_url = f"{v3_url}&initialSeriesInstanceUID={request.args.get('SeriesUID')}"
     return redirect(v3_url, code=301)
+
+
+# Solr request proxy
+#
+@app.route("/solr/<path:remainder>", methods=["POST"], strict_slashes=False)
+def solr_proxy(remainder):
+    if request.headers.get("X-WEBAPP-KEY", None) != WEBAPP_KEY:
+        return abort(403)
+    header_skip = ['Host', 'X-WEBAPP-KEY']
+    req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
+    resp = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_json())
+    return resp.content, resp.status_code, resp.headers.items()
 
 
 @app.route('/_ah/warmup')
@@ -400,7 +400,6 @@ def warmup():
 #
 # Send this back even if they just hit the server w/o a valid endpoint:
 #
-
 @app.route("/")
 def return_404():
     headers = {"Strict-Transport-Security": hsts_header}
@@ -409,7 +408,6 @@ def return_404():
 #
 # Let callers know where they stand, out of band:
 #
-
 @app.route('/quota_usage', methods=["GET", "OPTIONS"], strict_slashes=False)
 def quota_usage():
 
@@ -506,7 +504,6 @@ def quota_usage():
 # During the transition to the new request URL approach, we support the old URL pending the upgrade to the viewers.
 # Note this assumes we have used the USAGE_DECORATION
 #
-
 @app.route('{}{}<path:remainder>'.format(ALLOWED_LEGACY_PREFIX, USAGE_DECORATION), methods=["GET", "OPTIONS"])
 def legacy_shim(remainder):
     logger.warning("Using legacy shim for remainder: {} IP: {}".format(remainder, request.remote_addr))
@@ -523,19 +520,18 @@ def root(remainder):
 #
 # Common core, used by both
 #
-
 def common_core(request, remainder):
 
     client_ip = request.remote_addr
+
     # The referrer can be None, so we convert that to an empty string for regex searching purposes (no referrer is
     # the same as a referrer which isn't a viewer)
+    #
     ref = request.referrer or ""
 
-    #
     # Even the 429, 404, and 500 responses need to provide the cors headers to keep OHIF happy enough to process these
     # errors cleanly. So we do this stuff here to make it available for all responses:
     #
-
     cors_headers = {}
     if 'origin' in request.headers:
         cors_headers = {
@@ -547,16 +543,14 @@ def common_core(request, remainder):
             cors_headers["Access-Control-Allow-Headers"] = request.headers['access-control-request-headers']
 
     # Always add this:
-    cors_headers["Strict-Transport-Security"] = hsts_header
-
-        #logger.info("REQUEST METHOD {}".format(request.method))
-        #logger.info("Request headers: {}".format(str(request.headers)))
-
     #
+    cors_headers["Strict-Transport-Security"] = hsts_header
+    # logger.info("REQUEST METHOD {}".format(request.method))
+    # logger.info("Request headers: {}".format(str(request.headers)))
+
     # If an allowed hosts list exists, and the caller is not on it, we stop right here. Designed to restrict
     # access to e.g. development team:
     #
-
     is_denied = (len(allow_cidr_defs) > 0) and not is_in_cidr_list(client_ip, allow_cidr_defs)
     if is_denied:
         logger.info("request from {} has been dropped: not an allowed IP".format(client_ip))
@@ -564,11 +558,9 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-    #
     # If a denied hosts list exists, and the caller is on it, we stop right here. Designed to block
     # IP addresses that are abusing the proxy quota system:
     #
-
     is_denied = (len(deny_cidr_defs) > 0) and is_in_cidr_list(client_ip, deny_cidr_defs)
     if is_denied:
         logger.info("request from {} has been dropped: a blocked IP".format(client_ip))
@@ -580,7 +572,6 @@ def common_core(request, remainder):
     # If a restricted hosts list exists, and the caller is on it, we wre going to knock their quota down
     # by the specified amount. Allows us to throttle certain IPs to a lower level than the general public
     #
-
     quota_multiplier = 1.0
     is_restricted = (len(restrict_cidr_defs) > 0) and is_in_cidr_list(client_ip, restrict_cidr_defs)
     if is_restricted:
@@ -592,7 +583,6 @@ def common_core(request, remainder):
     # If user-agent secret exists, and the user agent string does not contain it, we stop right here.
     # Another poor-man's method to restrict access to the e.g. development team:
     #
-
     if UA_SECRET != "NONE":
         ua_string = request.headers.get('User-Agent')
         if UA_SECRET not in ua_string:
@@ -604,7 +594,6 @@ def common_core(request, remainder):
     #
     # We need to force access via our own load balancer:
     #
-
     hostname = urlparse(request.base_url).hostname
     if hostname != ALLOWED_HOST:
         logger.info("request from {} has been dropped: invalid hostname".format(hostname))
@@ -623,7 +612,6 @@ def common_core(request, remainder):
     # MUST be present in the URL. Strip it out of the provided path, and use the rest of the path
     # to call the Healthcare API.
     #
-
     if USAGE_DECORATION is not None:
         if remainder.find(USAGE_DECORATION) != -1:
             remainder = remainder.replace(USAGE_DECORATION, '')
@@ -636,7 +624,6 @@ def common_core(request, remainder):
     #
     # Ditch the expected and required path tail from the remainder:
     #
-
     if remainder.find(PATH_TAIL) != -1:
         remainder = remainder.replace(PATH_TAIL, '')
     else:
@@ -645,12 +632,9 @@ def common_core(request, remainder):
         resp.headers = cors_headers
         return resp
 
-
-
     #
     # Handle CORS:
     #
-
     if request.method == "OPTIONS":
         resp = Response('')
         resp.headers = cors_headers
@@ -660,30 +644,20 @@ def common_core(request, remainder):
     #
     # Wrap all processing so that we return CORS headers even if we fall over while processing the request:
     #
-
     try:
         credentials, gcp_project = get_credentials()
         scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
         auth_session = AuthorizedSession(scoped_credentials)
 
-
         #logger.info("[STATUS] Received querystring: {}".format(request.query_string.decode("utf-8")))
-
         #logger.info("Remote IP %s" % client_ip)
         #logger.info("Header is {}".format(request.headers.getlist("X-Forwarded-For")[0]))
-
-
-
-
-
         #
         # The idea here is that a client operating in our cloud region would not have a quota, since there
         # would be no egress charge. But it turns out that bytes passing through the web app are going to get
         # charged anyway, so the functionality is of limited use:
         #
-
         in_our_region = is_in_cidr_list(client_ip, local_cidr_defs)
-
         #
         # If IP is over the daily per-IP quota, we return a 429 Too Many Requests. If we are over the global quota,
         # same thing. We are happy to just read the data at this point, and will atomically increment the whole count
@@ -717,7 +691,6 @@ def common_core(request, remainder):
                 {'day': curr_use_per_ip['day'], 'bytes': convert_bytes(curr_use_per_ip['bytes'])} if curr_use_per_ip is not None else None,
                 {'day': curr_use_global['day'], 'bytes': convert_bytes(curr_use_global['bytes'])} if curr_use_global is not None else None,
             ))
-
 
             # Figure out if it is a new day, bag it if we are over the limit. Note that if we need to reset the byte_count
             # to zero for a new day, we will not need to rewrite to DB yet, since the returns here will not be triggered
@@ -774,11 +747,9 @@ def common_core(request, remainder):
 
             if delay_time > 0.0:
                 logger.info("Current byte count for IP is: {} so delay is starting at {}".format(convert_bytes(byte_count), delay_time))
-
             #
             # Will need this for the teardown. Don't bother to update the delay during this request.
             #
-
             g.proxy_ip_addr = client_ip
             g.proxy_date = todays_date
             g.start_gb = start_gb
@@ -808,7 +779,6 @@ def common_core(request, remainder):
         #
         # URLs change with each attempt, so now do these chores in the test loop:
         #
-
         url = "{}/{}".format(store_to_use, remainder)
 
         #
@@ -816,14 +786,12 @@ def common_core(request, remainder):
         # in a response for a metadata request. That's the URL that we are proxying. Thus, we need to do special handling
         # of metadata requests to recast that value into the proxy's version of the URL. Check if we have a metadata request:
         #
-
         need_to_rewrite = url.endswith("/metadata")
         logger.info("[STATUS] {} Received proxy request: {}".format(BULK_LOG_TAG, url))
 
         #
         # Check if we have a huge study that needs to suppress "transfer_encoding=*" to get Google to send it compressed:
         #
-
         need_to_drop_trans = False
         for study in HUGE_STUDIES_LIST:
             if study in url:
