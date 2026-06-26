@@ -385,7 +385,7 @@ def v2_reroute(study_id):
 def solr_proxy(remainder):
     try:
         if request.headers.get("X-WEBAPP-KEY", None) != WEBAPP_KEY:
-            return abort(403)
+            return Response(status=403)
         # Because requests will automatically decode, you need to strip any encoding related headers or the requester
         # will get confused
         # Also remove hop-related headers
