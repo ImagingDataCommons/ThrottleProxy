@@ -389,12 +389,11 @@ def solr_proxy(remainder):
             return abort(403)
         header_skip = ['Host', 'X-WEBAPP-KEY']
         req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
-        resp = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
+        return requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
     except Exception as e:
         logger.error(f"[ERROR] While processing {remainder}:")
         logger.exception(e)
         return abort(500)
-    return resp.raw, resp.status_code, resp.headers.items()
 
 
 @app.route('/_ah/warmup')
