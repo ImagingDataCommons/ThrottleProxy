@@ -394,6 +394,7 @@ def solr_proxy(remainder):
         header_skip = ['Host', 'X-WEBAPP-KEY']
         req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
         r = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
+        logger.info(f"{r.headers}")
         print(f"[STATUS] Testing Solr proxy: {r.json()}")
         logger.info(f"[STATUS] Testing Solr proxy: {r.json()}")
         resp = Response(r.raw.read(), headers=req_headers, status=r.status_code)
