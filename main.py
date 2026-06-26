@@ -388,8 +388,9 @@ def solr_proxy(remainder):
             return abort(403)
         # Because requests will automatically decode, you need to strip any encoding related headers or the requester
         # will get confused
-        header_skip = ['Host', 'X-WEBAPP-KEY', 'content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
+        # Also remove hop-related headers
+        header_skip = ['host', 'x-webapp-key', 'content-encoding', 'content-length', 'transfer-encoding', 'connection']
+        req_headers = {key: value for (key, value) in request.headers if key.lower() not in header_skip}
         r = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
         resp = Response(r.content, headers=req_headers, status=r.status_code)
         return resp
