@@ -379,11 +379,6 @@ def v2_reroute(study_id):
     return redirect(v3_url, code=301)
 
 
-def raw_response(response):
-    for chunk in response.raw.stream(decode_content=False):
-        yield chunk
-
-
 # Solr request proxy
 #
 @app.route("/solr/<path:remainder>", methods=["POST"], strict_slashes=False)
@@ -391,13 +386,12 @@ def solr_proxy(remainder):
     try:
         if request.headers.get("X-WEBAPP-KEY", None) != WEBAPP_KEY:
             return abort(403)
-        header_skip = ['Host', 'X-WEBAPP-KEY']
+        # Because requests will automatically decode, you need to strip any encoding related headers or the requester
+        # will get confused
+        header_skip = ['Host', 'X-WEBAPP-KEY', 'content-encoding', 'content-length', 'transfer-encoding', 'connection']
         req_headers = {key: value for (key, value) in request.headers if key not in header_skip}
         r = requests.post(f"{SOLR_URI}/solr/{remainder}", headers=req_headers, data=request.get_data(), stream=True)
-        logger.info(f"{r.headers}")
-        print(f"[STATUS] Testing Solr proxy: {r.json()}")
-        logger.info(f"[STATUS] Testing Solr proxy: {r.json()}")
-        resp = Response(r.raw.read(), headers=req_headers, status=r.status_code)
+        resp = Response(r.content, headers=req_headers, status=r.status_code)
         return resp
     except Exception as e:
         logger.error(f"[ERROR] While processing {remainder}:")
